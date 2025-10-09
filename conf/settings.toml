@@ -1,0 +1,6 @@
+[default]
+
+log_file = "@format {env[BASE_DIR]}/logs/ocs.log"
+log_level = 10
+log_format = "%(asctime)s %(levelname)s %(name)s %(threadName)s : %(message)s"
+cors_origins = ["*"]
