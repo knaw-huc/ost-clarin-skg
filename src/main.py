@@ -13,7 +13,7 @@ from src.ost_clairin_skg import public
 from src.ost_clairin_skg.commons import app_settings, get_project_details
 
 APP_NAME = os.environ.get("APP_NAME", "OSTrails Clarin SKG-IF Service")
-EXPOSE_PORT = os.environ.get("EXPOSE_PORT", 1947)
+EXPOSE_PORT = os.environ.get("EXPOSE_PORT", 41012)
 build_date = os.environ.get("BUILD_DATE", "unknown")
 import logging
 from logging.handlers import TimedRotatingFileHandler
