@@ -1,12 +1,13 @@
 [project]
-name = "ost-clarin-skg"
-version = "0.1.2-dev"
-description = "Add your description here"
+name = "ost-clarin-skg-if"
+version = "0.1.3-dev"
+description = "Clarin OSTrails Interoperability Framework (SKG-IF).<br/>The project is developing a standard interoperability framework called SKG-IF to ensure that different SKG implementations can exchange information."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "dynaconf>=3.2.11",
     "fastapi>=0.118.1",
+    "pyld>=2.0.4",
     "tomli>=2.2.1",
     "uvicorn>=0.37.0",
 ]

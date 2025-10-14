@@ -29,7 +29,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Create and activate virtual environment
 RUN python -m venv .venv
-ENV APP_NAME="PID Fetcher Service"
+ENV APP_NAME="ost-clarin-skg"
 ENV PATH="/home/akmi/ocs/.venv/bin:$PATH"
 # Copy the application into the container.
 COPY src ./src
