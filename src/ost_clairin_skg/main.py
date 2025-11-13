@@ -1,20 +1,18 @@
-import logging
 import os
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
-from src import ost_clairin_skg
-from src.ost_clairin_skg import public
-from src.ost_clairin_skg.commons import app_settings, get_project_details
+from src.ost_clairin_skg.api.v1 import root, product, metrics
+from src.ost_clairin_skg.infra.commons import app_settings, get_project_details, build_date
 
 APP_NAME = os.environ.get("APP_NAME", "OSTrails Clarin SKG-IF Service")
 EXPOSE_PORT = os.environ.get("EXPOSE_PORT", 41012)
-build_date = os.environ.get("BUILD_DATE", "unknown")
+
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
@@ -58,7 +56,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(public.router, tags=["Public"], prefix="")
+app.include_router(product.router, tags=["Product"], prefix="")
+app.include_router(root.router, prefix="")
+app.include_router(metrics.router, tags=["Metrics"], prefix="")
 
 @app.exception_handler(StarletteHTTPException)
 async def custom_404_handler(request: Request, exc: StarletteHTTPException):
@@ -66,33 +66,16 @@ async def custom_404_handler(request: Request, exc: StarletteHTTPException):
         return JSONResponse(status_code=404, content={"message": "Endpoint not found"})
     return JSONResponse(status_code=exc.status_code, content={"message": exc.detail})
 
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
-    logging.info("favicon route")
-    return JSONResponse(status_code=404, content={"message": "favicon.ico Not found"})
-
-
-@app.get("/", include_in_schema=False)
-async def root():
-    logging.info("root route")
-    return JSONResponse(
-        status_code=200,
-        content={
-            "message": "Welcome to the OSTrails Clarin SKG-IF API Service",
-            "version": f"{get_project_details(os.getenv('BASE_DIR'), ["version"])["version"]} (Build Date: {build_date})",
-            "build_date": build_date
-        }
-    )
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     num_workers = max(1, os.cpu_count() or 1)
     logging.info(f"=====Starting server with {num_workers} workers on port {EXPOSE_PORT} =====")
     uvicorn.run(
-        "src.main:app",
+        f"{__name__}:app",
         host="0.0.0.0",
         port=int(EXPOSE_PORT),
         workers=1,
         factory=False,
+        reload=app_settings.RELOAD_ENABLE,
     )
