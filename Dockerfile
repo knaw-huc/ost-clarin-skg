@@ -47,6 +47,6 @@ RUN uv sync --frozen --no-cache && chown -R akmi:akmi ${BASE_DIR}
 USER akmi
 RUN mkdir logs
 # Run the application.
-CMD ["python", "-m", "src.main"]
+CMD ["python", "-m", "src.ost_clairin_skg.main"]
 
 #CMD ["tail", "-f", "/dev/null"]

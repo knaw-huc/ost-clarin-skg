@@ -1,6 +1,6 @@
 [project]
 name = "ost-clarin-skg-if"
-version = "0.1.5-dev"
+version = "0.1.7-dev"
 title = "OSTrails Clarin SKG-IF API Service"
 description = "The project is developing a standard interoperability framework called SKG-IF to ensure that different SKG implementations can exchange information."
 readme = "README.md"
