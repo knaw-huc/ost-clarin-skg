@@ -99,6 +99,7 @@ def get_product(id: str = Path(..., description="Product identifier"), request: 
 
     filter_clause = commons.build_filter_clause(id)
     sparql = commons.build_product_sparql(filter_clause)
+    print(sparql)
 
     try:
         turtle_data = query_triplestore(sparql)

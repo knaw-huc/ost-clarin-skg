@@ -6,4 +6,4 @@ log_level = 10
 log_format = "%(asctime)s %(levelname)s %(name)s %(threadName)s : %(message)s"
 cors_origins = ["*"]
 reload_enable = true
-
+sparql_product_path = "@format {env[BASE_DIR]}/resources/sparql/product.txt"

@@ -94,31 +94,21 @@ def build_filter_clause(product_id: str) -> str:
 
 
 def build_product_sparql(filter_clause: str) -> str:
-    """Return the preserved SPARQL CONSTRUCT text for a product, inserting filter_clause."""
-    return f"""
-PREFIX datacite: <http://purl.org/spar/datacite/>
-PREFIX dc:       <http://purl.org/dc/terms/>
-PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
-PREFIX fabio:    <http://purl.org/spar/fabio/>
+    """Return the SPARQL CONSTRUCT text for a product from sparql_product_path setting, inserting filter_clause."""
+    sparql_path = app_settings.get("sparql_product_path")
+    if not sparql_path:
+        raise ValueError("sparql_product_path not configured in settings")
 
-CONSTRUCT {{
-  ?s a fabio:Work ;
-     datacite:hasIdentifier ?id ;
-     dc:abstract ?a ;
-     dc:title ?t .
-  ?id datacite:usesIdentifierScheme ?scheme ;
-      silvio:hasLiteralValue ?pid .
-}}
-WHERE {{
-  ?s a fabio:Work .
-  OPTIONAL {{ ?s dc:abstract ?a . }}
-  OPTIONAL {{ ?s dc:title ?t . }}
-  OPTIONAL {{
-    ?s datacite:hasIdentifier ?id .
-    OPTIONAL {{ ?id datacite:usesIdentifierScheme ?scheme . }}
-    OPTIONAL {{ ?id silvio:hasLiteralValue ?pid . }}
-  }}
-  {filter_clause}
-}}
-LIMIT 1
-""".strip()
+    with open(sparql_path, 'r') as f:
+        sparql_template = f.read().strip()
+
+    # Replace the placeholder for filter clause in the WHERE clause
+    # Find the WHERE clause and inject the filter before the closing }
+    where_end = sparql_template.rfind("}")
+    if where_end == -1:
+        raise ValueError("Invalid SPARQL template: no closing } found")
+
+    # Insert filter clause before the final closing brace
+    modified_sparql = sparql_template[:where_end] + f"\n    {filter_clause}\n" + sparql_template[where_end:]
+
+    return modified_sparql
