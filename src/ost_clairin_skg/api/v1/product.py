@@ -1,11 +1,9 @@
-import json
 import logging
-from typing import Optional, Dict, Any, Set
+from typing import Dict, Any, List, Optional
 
 import rdflib
-from fastapi import APIRouter, Query, Request, Path
+from fastapi import APIRouter, Request, Path, Query
 from fastapi.responses import JSONResponse
-from pyld import jsonld
 
 from src.ost_clairin_skg.infra import commons
 from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX
@@ -16,81 +14,92 @@ PASS = app_settings.PASS
 ENDPOINT = app_settings.ENDPOINT
 router = APIRouter(prefix=API_PREFIX)
 
+# SKG-IF context URLs
+SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
+SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
+
 
 # --- helpers: keep RDF->JSON-LD and context selection here ---
 
-def _graph_to_compacted_jsonld(turtle_data: str) -> Dict[str, Any]:
+
+
+def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
+    """Convert RDF turtle data to SKG-IF product JSON-LD format."""
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
 
-    nodes: Dict[str, Dict[str, Any]] = {}
+    # RDF namespace definitions
+    DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
+    DC = rdflib.Namespace("http://purl.org/dc/terms/")
+    SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
+    FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
+    RDF = rdflib.RDF
 
-    def node_id(term: rdflib.term.Node) -> str:
-        if isinstance(term, rdflib.BNode):
-            return f"_:{term}"
-        return str(term)
+    # Find the main product subject (should be a fabio:Work)
+    product_subject = None
+    for s in g.subjects(RDF.type, FABIO.Work):
+        product_subject = s
+        break
 
-    for s, p, o in g:
-        sid = node_id(s)
-        if sid not in nodes:
-            nodes[sid] = {"@id": sid}
-        pid = str(p)
+    if not product_subject:
+        raise ValueError("No fabio:Work found in RDF data")
 
-        if isinstance(o, rdflib.Literal):
-            value: Dict[str, Any] = {"@value": str(o)}
-            if o.language:
-                value["@language"] = o.language
-            elif o.datatype:
-                value["@type"] = str(o.datatype)
-        else:
-            oid = node_id(o)
-            value = {"@id": oid}
-
-        nodes[sid].setdefault(pid, []).append(value)
-
-    expanded = list(nodes.values())
-    doc = {"@graph": expanded}
-
-    context = {
-        "datacite": "http://purl.org/spar/datacite/",
-        "dc": "http://purl.org/dc/terms/",
-        "silvio": "http://www.essepuntato.it/2010/06/literalreification/",
-        "fabio": "http://purl.org/spar/fabio/",
-        "title": "http://purl.org/dc/terms/title",
-        "hasIdentifier": "http://purl.org/spar/datacite/hasIdentifier",
-        "usesIdentifierScheme": "http://purl.org/spar/datacite/usesIdentifierScheme",
-        "hasLiteralValue": "http://www.essepuntato.it/2010/06/literalreification/hasLiteralValue",
+    # Extract product data
+    product: Dict[str, Any] = {
+        "local_identifier": str(product_id),
+        "entity_type": "product",
+        "product_type": "literature",
     }
 
-    compacted = jsonld.compact(doc, context)
-    return compacted
+    # Extract titles
+    titles = list(g.objects(product_subject, DC.title))
+    if titles:
+        product["titles"] = {"en": [str(t) for t in titles]}
+
+    # Extract abstracts
+    abstracts = list(g.objects(product_subject, DC.abstract))
+    if abstracts:
+        product["abstracts"] = {"en": [str(a) for a in abstracts]}
+
+    # Extract identifiers
+    identifiers: list = []
+    for id_node in g.objects(product_subject, DATACITE.hasIdentifier):
+        id_obj: Dict[str, Any] = {"value": None, "scheme": None}
+
+        # Get the literal value
+        for literal_val in g.objects(id_node, SILVIO.hasLiteralValue):
+            id_obj["value"] = str(literal_val)
+
+        # Get the scheme
+        for scheme in g.objects(id_node, DATACITE.usesIdentifierScheme):
+            scheme_str = str(scheme)
+            # Extract scheme name from URI
+            if "#" in scheme_str:
+                id_obj["scheme"] = scheme_str.split("#")[-1].lower()
+            else:
+                id_obj["scheme"] = scheme_str.split("/")[-1].lower()
+
+        if id_obj["value"]:
+            identifiers.append(id_obj)
+
+    if identifiers:
+        product["identifiers"] = identifiers
+
+    return product
 
 
-def _select_minimal_context_for_item(item: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    used_terms: Set[str] = set()
-
-    def collect(obj: Any) -> None:
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if k.startswith("@"):
-                    if k == "@type":
-                        collect(v)
-                    continue
-                if k in context:
-                    used_terms.add(k)
-                collect(v)
-        elif isinstance(obj, list):
-            for it in obj:
-                collect(it)
-        elif isinstance(obj, str):
-            if ":" in obj:
-                prefix = obj.split(":", 1)[0]
-                if prefix in context:
-                    used_terms.add(prefix)
-
-    collect(item)
-    minimal_ctx = {k: context[k] for k in context.keys() if k in used_terms}
-    return minimal_ctx
+def _build_skg_if_response(product_data: Dict[str, Any], base_url: str = "https://w3id.org/skg-if/sandbox/api/") -> Dict[str, Any]:
+    """Build the final SKG-IF JSON-LD response with multiple contexts."""
+    return {
+        "@context": [
+            SKG_IF_CONTEXT_ONTOLOGY,
+            SKG_IF_CONTEXT_API,
+            {
+                "@base": base_url
+            }
+        ],
+        "@graph": [product_data]
+    }
 
 
 @router.get("/product/{id:path}", tags=["Product"])
@@ -99,7 +108,7 @@ def get_product(id: str = Path(..., description="Product identifier"), request: 
 
     filter_clause = commons.build_filter_clause(id)
     sparql = commons.build_product_sparql(filter_clause)
-    print(sparql)
+    logging.debug("SPARQL query: %s", sparql)
 
     try:
         turtle_data = query_triplestore(sparql)
@@ -110,26 +119,13 @@ def get_product(id: str = Path(..., description="Product identifier"), request: 
         return JSONResponse(status_code=404, content={"detail": "Product not found"})
 
     try:
-        compacted = _graph_to_compacted_jsonld(turtle_data)
+        # Transform RDF to SKG-IF product format
+        product_data = _rdf_graph_to_product(turtle_data, id)
 
-        # extract items (graph) — preserve earlier semantics
-        if isinstance(compacted, dict) and "@graph" in compacted:
-            items = compacted["@graph"]
-        else:
-            items = [compacted]
+        # Build response with SKG-IF contexts
+        response = _build_skg_if_response(product_data)
 
-        if not items:
-            return JSONResponse(status_code=404, content={"detail": "Product not found"})
-
-        item = items[0] if items else compacted
-        ctx = compacted.get("@context") if isinstance(compacted, dict) else None
-
-        if isinstance(item, dict) and isinstance(ctx, dict):
-            minimal_ctx = _select_minimal_context_for_item(item, ctx)
-            item = dict(item)
-            item["@context"] = minimal_ctx
-
-        return JSONResponse(content=item, media_type="application/ld+json")
+        return JSONResponse(content=response, media_type="application/ld+json")
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -138,4 +134,147 @@ def get_product(id: str = Path(..., description="Product identifier"), request: 
         )
 
 
-# ... rest of file (get_products) remains unchanged ...
+def _rdf_graph_to_products(turtle_data: str) -> List[Dict[str, Any]]:
+    """Convert RDF turtle data to list of SKG-IF products."""
+    g = rdflib.Graph()
+    g.parse(data=turtle_data, format="turtle")
+
+    # RDF namespace definitions
+    DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
+    DC = rdflib.Namespace("http://purl.org/dc/terms/")
+    SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
+    FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
+    RDF = rdflib.RDF
+
+    products = []
+
+    # Find all fabio:Work subjects
+    for product_subject in g.subjects(RDF.type, FABIO.Work):
+        product: Dict[str, Any] = {
+            "local_identifier": str(product_subject),
+            "entity_type": "product",
+            "product_type": "literature",
+        }
+
+        # Extract titles
+        titles = list(g.objects(product_subject, DC.title))
+        if titles:
+            product["titles"] = {"en": [str(t) for t in titles]}
+
+        # Extract abstracts
+        abstracts = list(g.objects(product_subject, DC.abstract))
+        if abstracts:
+            product["abstracts"] = {"en": [str(a) for a in abstracts]}
+
+        # Extract identifiers
+        identifiers: list = []
+        for id_node in g.objects(product_subject, DATACITE.hasIdentifier):
+            id_obj: Dict[str, Any] = {"value": None, "scheme": None}
+
+            # Get the literal value
+            for literal_val in g.objects(id_node, SILVIO.hasLiteralValue):
+                id_obj["value"] = str(literal_val)
+
+            # Get the scheme
+            for scheme in g.objects(id_node, DATACITE.usesIdentifierScheme):
+                scheme_str = str(scheme)
+                # Extract scheme name from URI
+                if "#" in scheme_str:
+                    id_obj["scheme"] = scheme_str.split("#")[-1].lower()
+                else:
+                    id_obj["scheme"] = scheme_str.split("/")[-1].lower()
+
+            if id_obj["value"]:
+                identifiers.append(id_obj)
+
+        if identifiers:
+            product["identifiers"] = identifiers
+
+        products.append(product)
+
+    return products
+
+
+@router.get("/products", tags=["Product"])
+def get_products(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    limit: int = Query(10, ge=1, le=100, description="Number of items per page")
+):
+    """Get paginated list of products in SKG-IF format."""
+    logging.debug("Get products endpoint called with page=%d, limit=%d", page, limit)
+
+    # Calculate offset from page number
+    offset = (page - 1) * limit
+
+    # Build SPARQL query with pagination
+    sparql = commons.build_products_sparql(limit=limit, offset=offset)
+    logging.debug("SPARQL query: %s", sparql)
+
+    try:
+        turtle_data = query_triplestore(sparql)
+    except RuntimeError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Failed to query triplestore", "error": str(exc)}
+        )
+
+    if not turtle_data:
+        # Return empty result set
+        products = []
+    else:
+        try:
+            products = _rdf_graph_to_products(turtle_data)
+        except Exception as exc:
+            logging.exception("Failed to convert triplestore response to JSON-LD")
+            return JSONResponse(
+                status_code=502,
+                content={"detail": "Failed to convert triplestore response to JSON-LD", "error": str(exc)},
+            )
+
+    # Build base URL from request
+    base_url = str(request.base_url).rstrip("/")
+    api_path = f"{API_PREFIX}/products"
+
+    # Build current page URL
+    current_url = f"{base_url}{api_path}?page={page}"
+    if limit != 10:
+        current_url += f"&limit={limit}"
+
+    # Build next page URL (always include for pagination, even if we don't know if there are more items)
+    next_page_url = f"{base_url}{api_path}?page={page + 1}"
+    if limit != 10:
+        next_page_url += f"&limit={limit}"
+
+    # Build search result base URL (without page param)
+    search_url = f"{base_url}{api_path}"
+    if limit != 10:
+        search_url += f"?limit={limit}"
+
+    # Build response with SKG-IF metadata
+    response = {
+        "@context": [
+            SKG_IF_CONTEXT_ONTOLOGY,
+            SKG_IF_CONTEXT_API,
+            {
+                "@base": f"{base_url}/"
+            }
+        ],
+        "meta": {
+            "local_identifier": current_url,
+            "entity_type": "search_result_page",
+            "next_page": {
+                "local_identifier": next_page_url,
+                "entity_type": "search_result_page"
+            },
+            "part_of": {
+                "local_identifier": search_url,
+                "entity_type": "search_result"
+                # Note: total_items would require a separate COUNT query
+                # Can be added if needed
+            }
+        },
+        "@graph": products
+    }
+
+    return JSONResponse(content=response, media_type="application/ld+json")

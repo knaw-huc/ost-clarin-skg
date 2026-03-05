@@ -112,3 +112,18 @@ def build_product_sparql(filter_clause: str) -> str:
     modified_sparql = sparql_template[:where_end] + f"\n    {filter_clause}\n" + sparql_template[where_end:]
 
     return modified_sparql
+
+
+def build_products_sparql(limit: int = 10, offset: int = 0) -> str:
+    """Return the SPARQL CONSTRUCT text for multiple products with pagination."""
+    sparql_path = app_settings.get("sparql_products_path")
+    if not sparql_path:
+        raise ValueError("sparql_products_path not configured in settings")
+
+    with open(sparql_path, 'r') as f:
+        sparql_template = f.read().strip()
+
+    # Add LIMIT and OFFSET for pagination
+    modified_sparql = sparql_template + f"\nLIMIT {limit}\nOFFSET {offset}"
+
+    return modified_sparql
