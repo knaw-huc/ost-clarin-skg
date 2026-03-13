@@ -122,8 +122,12 @@ def get_product(id: str = Path(..., description="Product identifier"), request: 
         # Transform RDF to SKG-IF product format
         product_data = _rdf_graph_to_product(turtle_data, id)
 
-        # Build response with SKG-IF contexts
-        response = _build_skg_if_response(product_data)
+        # Build response with SKG-IF contexts -- compute base_url from request if available
+        if request is not None:
+            base_url = str(request.base_url).rstrip("/")
+            response = _build_skg_if_response(product_data, base_url=f"{base_url}/")
+        else:
+            response = _build_skg_if_response(product_data)
 
         return JSONResponse(content=response, media_type="application/ld+json")
     except Exception as exc:
