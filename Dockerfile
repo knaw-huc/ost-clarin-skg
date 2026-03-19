@@ -34,6 +34,7 @@ ENV PATH="/home/akmi/ocs/.venv/bin:$PATH"
 COPY src ./src
 #Temporary, will be removed later
 COPY conf ./conf
+COPY resources ./resources
 COPY pyproject.toml .
 COPY README.md .
 COPY uv.lock .
