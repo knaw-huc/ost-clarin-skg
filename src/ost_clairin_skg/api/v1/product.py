@@ -102,7 +102,7 @@ def _build_skg_if_response(product_data: Dict[str, Any], base_url: str = "https:
     }
 
 
-@router.get("/product/{id:path}", tags=["Product"])
+@router.get("/products/{id:path}", tags=["Product"])
 def get_product(id: str = Path(..., description="Product identifier"), request: Request = None):
     logging.debug("Get product endpoint called for id=%s", id)
 
@@ -203,7 +203,8 @@ def _rdf_graph_to_products(turtle_data: str) -> List[Dict[str, Any]]:
 def get_products(
     request: Request,
     page: int = Query(1, ge=1, description="Page number (1-based)"),
-    limit: int = Query(10, ge=1, le=100, description="Number of items per page")
+    limit: int = Query(10, ge=1, le=100, description="Number of items per page"),
+    filter: Optional[str] = Query(None, description="Search filter. Format: comma separated name:value pairs", regex=r'^(,?.+:.+)*$')
 ):
     """Get paginated list of products in SKG-IF format."""
     logging.debug("Get products endpoint called with page=%d, limit=%d", page, limit)
@@ -211,8 +212,46 @@ def get_products(
     # Calculate offset from page number
     offset = (page - 1) * limit
 
-    # Build SPARQL query with pagination
-    sparql = commons.build_products_sparql(limit=limit, offset=offset)
+    # Build filter clause from filter param
+    filter_clause = None
+    if filter:
+        # Parse comma separated name:value pairs
+        parts = [p.strip() for p in filter.split(',') if p.strip()]
+        filters = []
+        for part in parts:
+            if ':' not in part:
+                continue
+            name, value = part.split(':', 1)
+            name = name.strip()
+            value = value.strip()
+            # map common filter names to SPARQL triple patterns or FILTERs
+            if name == 'product_type':
+                # support either a full URI or a simple token like 'literature'
+                if value.startswith('http://') or value.startswith('https://'):
+                    filters.append(f"?s a <{value}> .")
+                else:
+                    # match rdf:type URI that contains the token (case-insensitive)
+                    filters.append(f"?s a ?type . FILTER(CONTAINS(LCASE(STR(?type)), LCASE(\"{value}\"))) .")
+            elif name.startswith('contributions.person.identifiers.id'):
+                # pattern: contributions.person.identifiers.id:0000-... map to identifier literal match
+                filters.append(f"?s datacite:hasIdentifier ?id . ?id silvio:hasLiteralValue \"{value}\" .")
+            elif name.startswith('contributions.person.identifiers.scheme') or name.endswith('.scheme'):
+                filters.append(f"?s datacite:hasIdentifier ?id . ?id datacite:usesIdentifierScheme ?scheme . FILTER( LCASE(STR(?scheme)) = LCASE(\"{value}\") ) .")
+            elif name.startswith('cf.search.title') or name == 'title':
+                # simple CONTAINS match on dc:title
+                filters.append(f"?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE(\"{value}\"))) .")
+            else:
+                # Generic fallback: try matching a literal on subject with property named by 'name'
+                # Treat name as simple predicate local name in skg or dc
+                # This fallback simply binds a variable and checks for literal equality
+                filters.append(f"?s <{name}> ?v . FILTER(STR(?v) = \"{value}\") .")
+
+        # Combine filters with newline (AND semantics)
+        if filters:
+            filter_clause = '\n    '.join(filters)
+
+    # Build SPARQL query with pagination and optional filter
+    sparql = commons.build_products_sparql(limit=limit, offset=offset, filter_clause=filter_clause)
     logging.debug("SPARQL query: %s", sparql)
 
     try:
