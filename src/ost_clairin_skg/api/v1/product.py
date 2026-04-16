@@ -204,13 +204,18 @@ def get_products(
     request: Request,
     page: int = Query(1, ge=1, description="Page number (1-based)"),
     limit: int = Query(10, ge=1, le=100, description="Number of items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Alias for `limit` (page_size will override `limit` if provided)"),
     filter: Optional[str] = Query(None, description="Search filter. Format: comma separated name:value pairs", regex=r'^(,?.+:.+)*$')
 ):
     """Get paginated list of products in SKG-IF format."""
-    logging.debug("Get products endpoint called with page=%d, limit=%d", page, limit)
+    # If client provided page_size, treat it as an alias for limit
+    effective_limit = page_size if page_size is not None else limit
+    used_page_size = page_size is not None
+
+    logging.debug("Get products endpoint called with page=%d, limit=%d (effective_limit=%d, page_size_used=%s)", page, limit, effective_limit, used_page_size)
 
     # Calculate offset from page number
-    offset = (page - 1) * limit
+    offset = (page - 1) * effective_limit
 
     # Build filter clause from filter param
     filter_clause = None
@@ -218,40 +223,121 @@ def get_products(
         # Parse comma separated name:value pairs
         parts = [p.strip() for p in filter.split(',') if p.strip()]
         filters = []
+
+        # Supported exact filter names
+        supported = {
+            'product_type', 'type',
+            'cf.search.title', 'title', 'cf.search.title_abstract',
+            'cf.contributions_orcid', 'cf.contributions_aff_ror', 'cf.contributions_aff_country',
+            'cf.cites', 'cf.cited_by', 'cf.cites_doi', 'cf.cited_by_doi'
+        }
+
+        # Supported patterns (prefixes or suffixes)
+        # - contributions.person.identifiers.id* (starts with)
+        # - contributions.person.identifiers.scheme* (starts with)
+        # - any name that ends with '.scheme'
+        unsupported = []
+
         for part in parts:
             if ':' not in part:
                 continue
             name, value = part.split(':', 1)
             name = name.strip()
             value = value.strip()
-            # map common filter names to SPARQL triple patterns or FILTERs
-            if name == 'product_type':
-                # support either a full URI or a simple token like 'literature'
+
+            # Validate supported names/patterns first
+            is_supported = (
+                name in supported
+                or name.startswith('contributions.person.identifiers.id')
+                or name.startswith('contributions.person.identifiers.scheme')
+                or name.endswith('.scheme')
+            )
+
+            if not is_supported:
+                unsupported.append(name)
+                continue
+
+            # --- product type / rdf:type ---
+            if name in ('product_type', 'type'):
+                # Map common product_type tokens to RDF classes where appropriate
+                low = value.strip().lower()
                 if value.startswith('http://') or value.startswith('https://'):
                     filters.append(f"?s a <{value}> .")
+                elif low in ('literature', 'publication', 'text'):
+                    # Treat 'literature' as fabio:Work
+                    filters.append("?s a fabio:Work .")
                 else:
-                    # match rdf:type URI that contains the token (case-insensitive)
+                    # Generic match on rdf:type URI containing the token
                     filters.append(f"?s a ?type . FILTER(CONTAINS(LCASE(STR(?type)), LCASE(\"{value}\"))) .")
+
+            # --- title / title OR abstract search ---
+            elif name == 'cf.search.title' or name == 'title':
+                filters.append(f"?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE(\"{value}\"))) .")
+            elif name == 'cf.search.title_abstract':
+                filters.append(
+                    f"FILTER( EXISTS {{ ?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE(\"{value}\"))) }} || EXISTS {{ ?s dc:abstract ?a . FILTER(CONTAINS(LCASE(STR(?a)), LCASE(\"{value}\"))) }} ) ."
+                )
+
+            # --- contributions: ORCID ---
+            elif name == 'cf.contributions_orcid':
+                filters.append(
+                    f"?s skg:hasContribution ?contrib . ?contrib skg:hasAgent ?agent . ?agent datacite:hasIdentifier ?pid . ?pid silvio:hasLiteralValue \"{value}\" . ?pid datacite:usesIdentifierScheme ?ps . FILTER(CONTAINS(LCASE(STR(?ps)), \"orcid\")) ."
+                )
+
+            # --- contributions: affiliation ROR ---
+            elif name == 'cf.contributions_aff_ror':
+                if value.startswith('http://') or value.startswith('https://'):
+                    filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations <{value}> .")
+                else:
+                    filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations ?aff . ?aff skg:ror ?ror . FILTER(CONTAINS(LCASE(STR(?ror)), LCASE(\"{value}\"))) .")
+
+            # --- contributions: affiliation country ---
+            elif name == 'cf.contributions_aff_country':
+                filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations ?aff . ?aff skg:country ?country . FILTER(LCASE(STR(?country)) = LCASE(\"{value}\")) .")
+
+            # --- cites / cited_by by local identifier or URI ---
+            elif name == 'cf.cites':
+                if value.startswith('http://') or value.startswith('https://'):
+                    filters.append(f"?s skg:cites <{value}> .")
+                else:
+                    filters.append(f"?s skg:cites ?other . ?other silvio:hasLiteralValue \"{value}\" .")
+
+            elif name == 'cf.cited_by':
+                if value.startswith('http://') or value.startswith('https://'):
+                    filters.append(f"?other skg:cites <{value}> . ?other ?p ?o .")
+                else:
+                    filters.append(f"?other skg:cites ?s . ?other silvio:hasLiteralValue \"{value}\" .")
+
+            # --- cites/cited_by by DOI ---
+            elif name == 'cf.cites_doi':
+                filters.append(
+                    f"?s skg:cites ?other . ?other datacite:hasIdentifier ?idc . ?idc silvio:hasLiteralValue \"{value}\" . ?idc datacite:usesIdentifierScheme ?schc . FILTER(CONTAINS(LCASE(STR(?schc)), \"doi\")) ."
+                )
+
+            elif name == 'cf.cited_by_doi':
+                filters.append(
+                    f"?other skg:cites ?s . ?other datacite:hasIdentifier ?idc . ?idc silvio:hasLiteralValue \"{value}\" . ?idc datacite:usesIdentifierScheme ?schc . FILTER(CONTAINS(LCASE(STR(?schc)), \"doi\")) ."
+                )
+
+            # --- backward/compatibility: nested contributions.person.* patterns ---
             elif name.startswith('contributions.person.identifiers.id'):
-                # pattern: contributions.person.identifiers.id:0000-... map to identifier literal match
                 filters.append(f"?s datacite:hasIdentifier ?id . ?id silvio:hasLiteralValue \"{value}\" .")
             elif name.startswith('contributions.person.identifiers.scheme') or name.endswith('.scheme'):
                 filters.append(f"?s datacite:hasIdentifier ?id . ?id datacite:usesIdentifierScheme ?scheme . FILTER( LCASE(STR(?scheme)) = LCASE(\"{value}\") ) .")
-            elif name.startswith('cf.search.title') or name == 'title':
-                # simple CONTAINS match on dc:title
-                filters.append(f"?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE(\"{value}\"))) .")
-            else:
-                # Generic fallback: try matching a literal on subject with property named by 'name'
-                # Treat name as simple predicate local name in skg or dc
-                # This fallback simply binds a variable and checks for literal equality
-                filters.append(f"?s <{name}> ?v . FILTER(STR(?v) = \"{value}\") .")
+
+        # If any unsupported filters were requested, return 422
+        if unsupported:
+            return JSONResponse(status_code=422, content={
+                "detail": "Unsupported filter(s) requested",
+                "unsupported_filters": unsupported
+            })
 
         # Combine filters with newline (AND semantics)
         if filters:
             filter_clause = '\n    '.join(filters)
 
     # Build SPARQL query with pagination and optional filter
-    sparql = commons.build_products_sparql(limit=limit, offset=offset, filter_clause=filter_clause)
+    sparql = commons.build_products_sparql(limit=effective_limit, offset=offset, filter_clause=filter_clause)
     logging.debug("SPARQL query: %s", sparql)
 
     try:
@@ -281,18 +367,30 @@ def get_products(
 
     # Build current page URL
     current_url = f"{base_url}{api_path}?page={page}"
-    if limit != 10:
-        current_url += f"&limit={limit}"
+    if used_page_size:
+        if effective_limit != 10:
+            current_url += f"&page_size={effective_limit}"
+    else:
+        if effective_limit != 10:
+            current_url += f"&limit={effective_limit}"
 
     # Build next page URL (always include for pagination, even if we don't know if there are more items)
     next_page_url = f"{base_url}{api_path}?page={page + 1}"
-    if limit != 10:
-        next_page_url += f"&limit={limit}"
+    if used_page_size:
+        if effective_limit != 10:
+            next_page_url += f"&page_size={effective_limit}"
+    else:
+        if effective_limit != 10:
+            next_page_url += f"&limit={effective_limit}"
 
     # Build search result base URL (without page param)
     search_url = f"{base_url}{api_path}"
-    if limit != 10:
-        search_url += f"?limit={limit}"
+    if used_page_size:
+        if effective_limit != 10:
+            search_url += f"?page_size={effective_limit}"
+    else:
+        if effective_limit != 10:
+            search_url += f"?limit={effective_limit}"
 
     # Build response with SKG-IF metadata
     response = {

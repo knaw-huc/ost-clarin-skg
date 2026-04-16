@@ -114,8 +114,12 @@ def build_product_sparql(filter_clause: str) -> str:
     return modified_sparql
 
 
-def build_products_sparql(limit: int = 10, offset: int = 0) -> str:
-    """Return the SPARQL CONSTRUCT text for multiple products with pagination."""
+def build_products_sparql(limit: int = 10, offset: int = 0, filter_clause: str | None = None) -> str:
+    """Return the SPARQL CONSTRUCT text for multiple products with optional filter and pagination.
+
+    If `filter_clause` is provided it will be injected into the WHERE clause before the
+    final closing brace. LIMIT and OFFSET are appended after.
+    """
     sparql_path = app_settings.get("sparql_products_path")
     if not sparql_path:
         raise ValueError("sparql_products_path not configured in settings")
@@ -123,7 +127,16 @@ def build_products_sparql(limit: int = 10, offset: int = 0) -> str:
     with open(sparql_path, 'r') as f:
         sparql_template = f.read().strip()
 
+    modified_sparql = sparql_template
+
+    # If a filter clause is provided, try to insert it into the WHERE block before the final '}'
+    if filter_clause:
+        where_end = modified_sparql.rfind("}")
+        if where_end == -1:
+            raise ValueError("Invalid SPARQL template: no closing } found")
+        modified_sparql = modified_sparql[:where_end] + f"\n    {filter_clause}\n" + modified_sparql[where_end:]
+
     # Add LIMIT and OFFSET for pagination
-    modified_sparql = sparql_template + f"\nLIMIT {limit}\nOFFSET {offset}"
+    modified_sparql = modified_sparql + f"\nLIMIT {limit}\nOFFSET {offset}"
 
     return modified_sparql
