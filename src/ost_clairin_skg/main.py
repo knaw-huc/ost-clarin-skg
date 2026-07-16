@@ -56,7 +56,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(product.router, tags=["Product"], prefix="")
+app.include_router(products.router, tags=["Product"], prefix="")
 app.include_router(root.router, prefix="")
 app.include_router(metrics.router, tags=["Metrics"], prefix="")
 
