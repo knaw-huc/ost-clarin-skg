@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from src.ost_clairin_skg.api.v1.metrics import router as metrics_router
+from src.ost_clairin_skg.api.v1.organizations import router as organizations_router
 from src.ost_clairin_skg.api.v1.products import router as products_router
 from src.ost_clairin_skg.api.v1.root import router as root_router
 from src.ost_clairin_skg.infra.commons import app_settings, get_project_details, build_date
@@ -59,6 +60,7 @@ app.add_middleware(
 )
 
 app.include_router(products_router, tags=["Product"], prefix="")
+app.include_router(organizations_router, tags=["Organisation"], prefix="")
 app.include_router(root_router, prefix="")
 app.include_router(metrics_router, tags=["Metrics"], prefix="")
 
