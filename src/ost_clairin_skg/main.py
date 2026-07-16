@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
-from src.ost_clairin_skg.api.v1 import root, product, metrics
+from src.ost_clairin_skg.api.v1 import root, products, metrics
 from src.ost_clairin_skg.infra.commons import app_settings, get_project_details, build_date
 
 APP_NAME = os.environ.get("APP_NAME", "OSTrails Clarin SKG-IF Service")
