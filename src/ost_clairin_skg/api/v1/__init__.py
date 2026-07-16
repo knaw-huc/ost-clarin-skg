@@ -1,6 +1,6 @@
 from importlib import import_module
 
-__all__ = ["root", "products", "metrics", "organizations"]
+__all__ = ["root", "products", "metrics", "organizations", "persons", "venues", "grants", "datasources"]
 
 
 def __getattr__(name: str):
