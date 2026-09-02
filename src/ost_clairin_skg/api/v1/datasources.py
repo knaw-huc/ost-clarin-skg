@@ -127,7 +127,15 @@ def _matches_filter(ds: Dict[str, Any], key: str, value: str) -> bool:
 async def get_datasource(
     local_identifier: str = Path(..., description="The local identifier of the datasource"),
 ) -> JSONResponse:
-    """Get single datasource by id following SKG-IF Data Source (entity_type: datasource)."""
+    """Retrieve a single data source by local identifier.
+
+    Returns a JSON-LD document following the SKG-IF specification (`entity_type: datasource`).
+    Includes classification, research product types, identifiers, and related metadata.
+
+    **Responses**
+    - `200` — datasource found, returns JSON-LD
+    - `404` — no datasource with the given identifier
+    """
     logging.info(f"Getting datasource - local_identifier={local_identifier}")
 
     ds_data = next(
@@ -173,7 +181,27 @@ async def get_datasources(
         pattern=r"^(,?.+:.+)*$",
     ),
 ) -> JSONResponse:
-    """Get list of datasources following SKG-IF Data Source (entity_type: datasource)."""
+    """List data sources with pagination and optional filtering.
+
+    Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
+    `@graph` is an `entity_type: datasource` object.
+
+    **Filtering** — supply comma-separated `name:value` pairs.  
+    Supported filter keys:
+
+    | Key | Description |
+    |-----|-------------|
+    | `data_source_classification` | Exact match on classification (e.g. `repository`) |
+    | `research_product_type` | Exact match on product type (e.g. `literature`) |
+    | `identifiers.scheme` | Exact match on identifier scheme (e.g. `re3data`) |
+    | `identifiers.value` | Exact match on identifier value |
+    | `acronym` | Exact match on acronym |
+    | `cf.search.name` | Case-insensitive substring match on name |
+
+    **Responses**
+    - `200` — JSON-LD list (may be empty)
+    - `502` — backend error
+    """
     logging.info(f"Getting datasources - page={page}, page_size={page_size}, filter={filter}")
 
     parsed_filters = _parse_filters(filter)

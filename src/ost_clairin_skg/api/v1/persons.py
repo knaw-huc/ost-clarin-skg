@@ -157,7 +157,33 @@ async def get_persons(
         ),
     ),
 ) -> JSONResponse:
-    """Get list of persons following SKG-IF Agent (entity_type: person)."""
+    """List persons with pagination and optional filtering.
+
+    Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
+    `@graph` is an `entity_type: person` object (SKG-IF Agent).
+
+    **Filtering** — supply comma-separated `name:value` pairs.  
+    Supported filter keys:
+
+    | Key | Description |
+    |-----|-------------|
+    | `given_name` | Exact match on given (first) name |
+    | `family_name` | Exact match on family (last) name |
+    | `name` | Exact match on full name |
+    | `cf.search.given_name` | Case-insensitive substring match on given name |
+    | `cf.search.family_name` | Case-insensitive substring match on family name |
+    | `cf.search.name` | Case-insensitive substring match on full name |
+    | `identifiers.id` | Exact match on any identifier value |
+    | `identifiers.scheme` | Exact match on identifier scheme (e.g. `orcid`) |
+    | `affiliations.affiliation.local_identifier` | Affiliation local ID |
+    | `affiliations.affiliation.name` | Affiliation name (exact) |
+    | `affiliations.affiliation.short_name` | Affiliation short name (exact) |
+    | `affiliations.role` | Role within affiliation |
+
+    **Responses**
+    - `200` — JSON-LD list (may be empty)
+    - `502` — backend error
+    """
     logging.info(f"Getting persons - page={page}, page_size={page_size}, filter={filter}")
 
     parsed_filters = _parse_filters(filter)
@@ -223,7 +249,14 @@ async def get_persons(
 async def get_person(
     local_identifier: str = Path(..., description="The local identifier of the person"),
 ) -> JSONResponse:
-    """Get person by id following SKG-IF Agent (entity_type: person)."""
+    """Retrieve a single person by local identifier.
+
+    Returns a JSON-LD document following the SKG-IF specification (`entity_type: person`).
+
+    **Responses**
+    - `200` — person found, returns JSON-LD
+    - `404` — no person with the given identifier
+    """
     logging.info(f"Getting person - local_identifier={local_identifier}")
 
     person_data = next((person for person in PERSONS_DATA if person["local_identifier"] == local_identifier), None)

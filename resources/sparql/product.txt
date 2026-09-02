@@ -14,12 +14,14 @@ CONSTRUCT {
 }
 WHERE {
     ?s a fabio:Work .
+
+    ?s dc:title ?t .
+    FILTER(?t = "Robin1_Lem")
+
     OPTIONAL { ?s dc:abstract ?a . }
-    OPTIONAL { ?s dc:title ?t . }
     OPTIONAL {
         ?s datacite:hasIdentifier ?id .
         OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
         OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
     }
 }
-LIMIT 100

@@ -103,7 +103,21 @@ def _build_skg_if_response(product_data: Dict[str, Any], base_url: str = "https:
 
 
 @router.get("/products/{id:path}", tags=["Product"])
-def get_product(id: str = Path(..., description="Product identifier"), request: Request = None):
+def get_product(id: str = Path(..., description="Product identifier (local ID or full URI)"), request: Request = None):
+    """Retrieve a single product by identifier.
+
+    Returns a JSON-LD document following the [SKG-IF](https://skg-if.github.io/interoperability-framework/)
+    specification (`entity_type: product`). The `@context` includes both the SKG-IF ontology and
+    API contexts, with `@base` set to this service's URL.
+
+    The `id` path segment may be a plain local identifier or a full URI — both are resolved against
+    the triplestore. URL-encoded slashes are supported (e.g. `https%3A%2F%2F...`).
+
+    **Responses**
+    - `200` — product found, returns JSON-LD
+    - `404` — no product with the given identifier
+    - `502` — triplestore unreachable or returned unexpected data
+    """
     logging.debug("Get product endpoint called for id=%s", id)
 
     filter_clause = commons.build_filter_clause(id)
@@ -207,7 +221,35 @@ def get_products(
     page_size: Optional[int] = Query(None, ge=1, le=100, description="Alias for `limit` (page_size will override `limit` if provided)"),
     filter: Optional[str] = Query(None, description="Search filter. Format: comma separated name:value pairs", regex=r'^(,?.+:.+)*$')
 ):
-    """Get paginated list of products in SKG-IF format."""
+    """List products with pagination and optional filtering.
+
+    Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
+    `@graph` is an `entity_type: product` object. The `meta` block contains pagination links.
+
+    **Pagination** — use `page` (1-based) together with `limit` or `page_size` (they are
+    aliases; `page_size` takes priority when both are supplied).
+
+    **Filtering** — supply comma-separated `name:value` pairs.  
+    Supported filter keys:
+
+    | Key | Description |
+    |-----|-------------|
+    | `product_type` / `type` | RDF type, e.g. `literature` |
+    | `cf.search.title` / `title` | Case-insensitive substring match on title |
+    | `cf.search.title_abstract` | Substring match on title **or** abstract |
+    | `cf.contributions_orcid` | Contributor ORCID value |
+    | `cf.contributions_aff_ror` | Contributor affiliation ROR URI or value |
+    | `cf.contributions_aff_country` | Contributor affiliation country code |
+    | `cf.cites` | Local identifier or URI of a cited product |
+    | `cf.cited_by` | Local identifier or URI of a citing product |
+    | `cf.cites_doi` | DOI of a cited product |
+    | `cf.cited_by_doi` | DOI of a citing product |
+
+    **Responses**
+    - `200` — JSON-LD list (may be empty)
+    - `422` — unsupported filter key supplied
+    - `502` — triplestore unreachable or returned unexpected data
+    """
     # If client provided page_size, treat it as an alias for limit
     effective_limit = page_size if page_size is not None else limit
     used_page_size = page_size is not None

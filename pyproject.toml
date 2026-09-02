@@ -1,6 +1,6 @@
 [project]
 name = "ost-clarin-skg-if"
-version = "0.2.4-dev"
+version = "0.2.5-dev"
 title = "OSTrails Clarin SKG-IF API Service"
 description = "The project is developing a standard interoperability framework called SKG-IF to ensure that different SKG implementations can exchange information."
 readme = "README.md"
@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.121.0",
     "locust>=2.43.3",
     "pyld>=2.0.4",
+    "pyyaml>=6.0.3",
     "rdflib>=7.4.0",
     "tomli>=2.3.0",
     "uvicorn>=0.38.0",

@@ -396,7 +396,16 @@ def _build_meta_api_items(grant: Dict[str, Any]) -> List[Dict[str, Any]]:
 async def get_grant(
     local_identifier: str = Path(..., description="The local identifier of the grant"),
 ) -> JSONResponse:
-    """Get single grant by id following SKG-IF Grant (entity_type: grant)."""
+    """Retrieve a single grant by local identifier.
+
+    Returns a JSON-LD document following the SKG-IF specification (`entity_type: grant`).
+    The response includes funding agency details, beneficiary organisations, contributor
+    persons, and monetary information where available.
+
+    **Responses**
+    - `200` — grant found, returns JSON-LD
+    - `404` — no grant with the given identifier
+    """
     logging.info(f"Getting grant - local_identifier={local_identifier}")
 
     grant_data = next(
@@ -450,7 +459,38 @@ async def get_grants(
         ),
     ),
 ) -> JSONResponse:
-    """Get list of grants following SKG-IF Grant (entity_type: grant)."""
+    """List grants with pagination and optional filtering.
+
+    Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
+    `@graph` is an `entity_type: grant` object.
+
+    **Filtering** — supply comma-separated `name:value` pairs.  
+    Supported filter keys:
+
+    | Key | Description |
+    |-----|-------------|
+    | `identifiers.scheme` / `identifiers.value` | Identifier scheme or value |
+    | `acronym` | Exact match on acronym |
+    | `grant_number` | Exact match on grant number |
+    | `currency` | Exact match on currency code |
+    | `website` | Exact match on website URL |
+    | `funding_stream` | Exact match on funding stream |
+    | `funding_agency.*` | Fields on the funding agency object |
+    | `beneficiaries.*` | Fields on beneficiary organisations |
+    | `contributions.*` | Fields on contributor persons/roles |
+    | `cf.search.title` | Case-insensitive substring match on title |
+    | `cf.search.title_abstract` | Substring match on title or abstract |
+    | `cf.search.acronym` | Case-insensitive substring match on acronym |
+    | `cf.funded_amount.from` | Minimum funded amount (inclusive) |
+    | `cf.funded_amount.to` | Maximum funded amount (inclusive) |
+    | `cf.duration.start.from` | Earliest start date (ISO 8601, inclusive) |
+    | `cf.duration.start.to` | Latest start date (ISO 8601, inclusive) |
+    | `cf.duration.end.from` | Earliest end date (ISO 8601, inclusive) |
+
+    **Responses**
+    - `200` — JSON-LD list (may be empty)
+    - `502` — backend error
+    """
     logging.info(f"Getting grants - page={page}, page_size={page_size}, filter={filter}")
 
     parsed_filters = _parse_filters(filter)

@@ -32,14 +32,16 @@ async def get_organisations(
     filter: Optional[str] = Query(None, description="Search filter (comma-separated key:value pairs)")
 ) -> JSONResponse:
     """
-    Get list of organisations.
+    List organisations with pagination and optional filtering.
 
-    Query Parameters:
-    - page: Page number (default: 1)
-    - page_size: Number of items per page (default: 10, max: 100)
-    - filter: Search filter in format key:value,key2:value2 (optional)
+    Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
+    `@graph` is an `entity_type: organisation` object.
 
-    Returns JSON-LD formatted organisations list with pagination metadata.
+    **Filtering** — supply comma-separated `name:value` pairs (format: `key:value,key2:value2`).
+
+    **Responses**
+    - `200` — JSON-LD list (may be empty)
+    - `502` — backend error
     """
     logging.info(f"Getting organisations - page={page}, page_size={page_size}, filter={filter}")
 
@@ -73,12 +75,14 @@ async def get_organisation(
     local_identifier: str = Path(..., description="The local identifier of the organisation")
 ) -> JSONResponse:
     """
-    Get organisation by local identifier.
+    Retrieve a single organisation by local identifier.
 
-    Path Parameters:
-    - local_identifier: The unique identifier of the organisation
+    Returns a JSON-LD document following the SKG-IF specification (`entity_type: organisation`).
+    Includes name, country, identifier schemes (e.g. ROR), and organisation type.
 
-    Returns JSON-LD formatted organisation object following SKG-IF specification.
+    **Responses**
+    - `200` — organisation found, returns JSON-LD
+    - `404` — no organisation with the given identifier
     """
     logging.info(f"Getting organisation - local_identifier={local_identifier}")
 

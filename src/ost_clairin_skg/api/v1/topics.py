@@ -14,40 +14,41 @@ SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
 BASE_URL = app_settings.get("base_url", "https://w3id.org/skg-if/sandbox/acme/")
 
 # Placeholder data until GraphDB-backed retrieval is implemented.
-VENUES_DATA: List[Dict[str, Any]] = [
+TOPICS_DATA: List[Dict[str, Any]] = [
     {
-        "local_identifier": "venue-1-jp",
-        "entity_type": "venue",
-        "identifiers": [{"scheme": "issn", "value": "0264-3561"}],
-        "name": "Journal of Psychoceramics",
-        "acronym": "JPC",
-        "type": "journal",
+        "local_identifier": "topic-1-cs",
+        "entity_type": "topic",
+        "identifiers": [{"scheme": "wikidata", "value": "https://www.wikidata.org/wiki/Q21198"}],
+        "labels": {
+            "en": "Computer Science",
+            "it": "Informatica",
+        },
     },
     {
-        "local_identifier": "venue-2-sd",
-        "entity_type": "venue",
-        "identifiers": [{"scheme": "issn", "value": "2052-4463"}],
-        "name": "Scientific Data",
-        "acronym": "Sci Data",
-        "type": "journal",
+        "local_identifier": "topic-2-solar",
+        "entity_type": "topic",
+        "identifiers": [{"scheme": "wikidata", "value": "https://www.wikidata.org/wiki/Q12705"}],
+        "labels": {
+            "en": "Solar energy",
+            "fr": "Energie solaire",
+        },
     },
     {
-        "local_identifier": "venue-3-arxiv",
-        "entity_type": "venue",
-        "identifiers": [],
-        "name": "arXiv",
-        "acronym": "arXiv",
-        "type": "repository",
+        "local_identifier": "topic-3-data",
+        "entity_type": "topic",
+        "identifiers": [{"scheme": "local", "value": "data-management"}],
+        "labels": {
+            "en": "Data management",
+            "de": "Datenmanagement",
+        },
     },
 ]
 
 SUPPORTED_FILTERS = {
-    "acronym",
-    "type",
     "identifiers.scheme",
     "identifiers.value",
-    "name",
-    "cf.search.name",
+    "cf.search.labels",
+    "cf.search.language",
 }
 
 
@@ -89,64 +90,40 @@ def _parse_filters(filter_value: Optional[str]) -> List[Tuple[str, str]]:
     return filters
 
 
-def _matches_filter(venue: Dict[str, Any], key: str, value: str) -> bool:
-    if key == "acronym":
-        return venue.get("acronym") == value
-    if key == "type":
-        return venue.get("type") == value
-    if key == "name":
-        return venue.get("name") == value
+def _matches_filter(topic: Dict[str, Any], key: str, value: str) -> bool:
     if key == "identifiers.scheme":
-        return any(i.get("scheme") == value for i in venue.get("identifiers", []))
+        return any(identifier.get("scheme") == value for identifier in topic.get("identifiers", []))
     if key == "identifiers.value":
-        return any(i.get("value") == value for i in venue.get("identifiers", []))
-    if key == "cf.search.name":
-        return value.lower() in (venue.get("name") or "").lower()
+        return any(identifier.get("value") == value for identifier in topic.get("identifiers", []))
+    if key == "cf.search.labels":
+        return any(value.lower() in label.lower() for label in topic.get("labels", {}).values())
+    if key == "cf.search.language":
+        return value in topic.get("labels", {})
     return False
 
 
-@router.get("/venues", tags=["Venue"])
-async def get_venues(
+@router.get("/topics", tags=["Topic"])
+async def get_topics(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=100, description="Items per page"),
     filter: Optional[str] = Query(
         None,
         description=(
             "Comma-separated filter_name:filter_value elements. "
-            "Attribute filters (exact match): acronym, type, name, identifiers.scheme, identifiers.value. "
-            "Convenience filters: cf.search.name. "
-            "Examples: type:journal | cf.search.name:Psychoceramics | acronym:JPC,type:journal"
+            "Attribute filters (exact match): identifiers.scheme, identifiers.value. "
+            "Convenience filters: cf.search.labels, cf.search.language. "
+            "Examples: cf.search.labels:Solar | cf.search.labels:Solar,cf.search.language:en"
         ),
+        pattern=r"^(,?.+:.+)*$",
     ),
 ) -> JSONResponse:
-    """List venues with pagination and optional filtering.
-
-    Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
-    `@graph` is an `entity_type: venue` object.
-
-    **Filtering** — supply comma-separated `name:value` pairs.  
-    Supported filter keys:
-
-    | Key | Description |
-    |-----|-------------|
-    | `acronym` | Exact match on acronym |
-    | `type` | Exact match on venue type (e.g. `journal`, `conference`) |
-    | `name` | Exact match on venue name |
-    | `identifiers.scheme` | Exact match on identifier scheme (e.g. `issn`) |
-    | `identifiers.value` | Exact match on identifier value |
-    | `cf.search.name` | Case-insensitive substring match on name |
-
-    **Responses**
-    - `200` — JSON-LD list (may be empty)
-    - `502` — backend error
-    """
-    logging.info(f"Getting venues - page={page}, page_size={page_size}, filter={filter}")
+    logging.info(f"Getting topics - page={page}, page_size={page_size}, filter={filter}")
 
     parsed_filters = _parse_filters(filter)
 
-    filtered = VENUES_DATA
+    filtered = TOPICS_DATA
     for key, value in parsed_filters:
-        filtered = [venue for venue in filtered if _matches_filter(venue, key, value)]
+        filtered = [topic for topic in filtered if _matches_filter(topic, key, value)]
 
     total_items = len(filtered)
     total_pages = max(1, math.ceil(total_items / page_size))
@@ -154,7 +131,7 @@ async def get_venues(
     end = start + page_size
     page_items = filtered[start:end]
 
-    query_base = _api_url("/venues")
+    query_base = _api_url("/topics")
     filter_fragment = f"filter={filter}" if filter else None
     part_of_params = [p for p in [filter_fragment] if p]
     part_of_local_identifier = (
@@ -179,17 +156,17 @@ async def get_venues(
         },
         "api_items": [
             {
-                "local_identifier": venue["local_identifier"],
+                "local_identifier": topic["local_identifier"],
                 "urls": [
                     {
                         "entity_type": "link",
                         "rel": "self",
-                        "href": _api_url(f"/venues/{venue['local_identifier']}"),
+                        "href": _api_url(f"/topics/{topic['local_identifier']}"),
                         "media_type": "application/json",
                     }
                 ],
             }
-            for venue in page_items
+            for topic in page_items
         ],
     }
 
@@ -215,30 +192,22 @@ async def get_venues(
     )
 
 
-@router.get("/venues/{local_identifier}", tags=["Venue"])
-async def get_venue(
-    local_identifier: str = Path(..., description="The local identifier of the venue"),
+@router.get("/topics/{local_identifier}", tags=["Topic"])
+async def get_topic(
+    local_identifier: str = Path(..., description="The local identifier of the topic"),
 ) -> JSONResponse:
-    """Retrieve a single venue by local identifier.
+    logging.info(f"Getting topic - local_identifier={local_identifier}")
 
-    Returns a JSON-LD document following the SKG-IF specification (`entity_type: venue`).
-
-    **Responses**
-    - `200` — venue found, returns JSON-LD
-    - `404` — no venue with the given identifier
-    """
-    logging.info(f"Getting venue - local_identifier={local_identifier}")
-
-    venue_data = next(
-        (venue for venue in VENUES_DATA if venue["local_identifier"] == local_identifier),
+    topic_data = next(
+        (topic for topic in TOPICS_DATA if topic["local_identifier"] == local_identifier),
         None,
     )
 
-    if not venue_data:
-        logging.warning(f"Venue not found - local_identifier={local_identifier}")
+    if not topic_data:
+        logging.warning(f"Topic not found - local_identifier={local_identifier}")
         return JSONResponse(
             status_code=404,
-            content={"message": f"Venue '{local_identifier}' not found"},
+            content={"message": f"Topic '{local_identifier}' not found"},
         )
 
     return JSONResponse(
@@ -246,10 +215,9 @@ async def get_venue(
         content={
             "@context": _build_context(),
             "meta": {
-                "local_identifier": _api_url(f"/venues/{local_identifier}"),
+                "local_identifier": _api_url(f"/topics/{local_identifier}"),
                 "entity_type": "single_entity",
             },
-            "@graph": [venue_data],
+            "@graph": [topic_data],
         },
     )
-

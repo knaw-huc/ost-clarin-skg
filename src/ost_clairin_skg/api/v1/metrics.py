@@ -12,16 +12,21 @@ router = APIRouter(prefix=API_PREFIX)
 
 @router.get("/health")
 def health_check():
+    """Service health check.
+
+    Returns `{"status": "ok"}` when the service is running. Use this for liveness probes.
+    """
     logging.debug("Health check endpoint called")
     return {"status": "ok"}
 
 
 @router.get("/ping")
 def ping():
-    logging.debug("Ping endpoint called")
+    """Ping / reachability check.
+
+    Returns `{"message": "pong"}`. Lightweight alternative to `/health` for quick connectivity tests.
+    """
     return {"message": "pong"}
-
-
 @router.get("/objects", tags=["Metrics"])
 def objects_count():
     """Return the number of distinct subjects (objects) present in the triplestore.
