@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import json
 
 from src.ost_clairin_skg.main import app
-from src.ost_clairin_skg.api.v1.product import _rdf_graph_to_product, _build_skg_if_response
+from src.ost_clairin_skg.api.v1.products import _rdf_graph_to_product, _build_skg_if_response
 
 
 client = TestClient(app)
