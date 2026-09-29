@@ -1,27 +1,51 @@
 PREFIX datacite: <http://purl.org/spar/datacite/>
 PREFIX dc:       <http://purl.org/dc/terms/>
 PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
+PREFIX bido:     <http://purl.org/spar/bido/>
 PREFIX fabio:    <http://purl.org/spar/fabio/>
-PREFIX skg: <https://w3id.org/skg-if/ontology/>
+PREFIX skg:      <https://w3id.org/skg-if/ontology/>
 
 CONSTRUCT {
-  ?s a fabio:Work , skg:Product ;
+  ?s a fabio:Work , skg:Product , ?ptype ;
      datacite:hasIdentifier ?id ;
      dc:abstract ?a ;
-     dc:title ?t .
+     dc:title ?t ;
+     dc:format ?format .
   ?id datacite:usesIdentifierScheme ?scheme ;
       silvio:hasLiteralValue ?pid .
+  ?s bido:holdsBibliometricDataInTime ?bd .
+  ?bd a bido:BibliometricDataInTime ;
+      bido:withBibliometricData ?topic .
+  ?topic a fabio:SubjectTerm ;
+         skos:prefLabel ?tl ;
+         datacite:hasIdentifier ?tid .
+  ?tid datacite:usesIdentifierScheme ?tscheme ;
+       silvio:hasLiteralValue ?tpid .
 }
 WHERE {
     ?s a fabio:Work .
-
-    ?s dc:title ?t .
-    FILTER(?t = "Robin1_Lem")
-
+    OPTIONAL { ?s a ?ptype . }
     OPTIONAL { ?s dc:abstract ?a . }
+    OPTIONAL { ?s dc:title ?t . }
     OPTIONAL {
         ?s datacite:hasIdentifier ?id .
         OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
         OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
+    }
+    OPTIONAL {
+        ?s dc:format ?format .
+    }
+    # Topics: SKG-IF models a product's topic as bido:BibliometricDataInTime pointing to the term
+    OPTIONAL {
+        ?s bido:holdsBibliometricDataInTime ?bd .
+        ?bd bido:withBibliometricData ?topic .
+        ?topic a fabio:SubjectTerm .
+        OPTIONAL { ?topic skos:prefLabel ?tl . }
+        OPTIONAL {
+            ?topic datacite:hasIdentifier ?tid .
+            OPTIONAL { ?tid datacite:usesIdentifierScheme ?tscheme . }
+            OPTIONAL { ?tid silvio:hasLiteralValue ?tpid . }
+        }
     }
 }

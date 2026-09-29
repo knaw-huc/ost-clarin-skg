@@ -1,0 +1,25 @@
+PREFIX datacite: <http://purl.org/spar/datacite/>
+PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX skg:      <https://w3id.org/skg-if/ontology/>
+
+CONSTRUCT {
+  ?s a skg:Agent, foaf:Person ;
+     datacite:hasIdentifier ?id ;
+     foaf:name ?n ;
+     foaf:givenName ?g ;
+     foaf:familyName ?f .
+  ?id datacite:usesIdentifierScheme ?scheme ;
+      silvio:hasLiteralValue ?pid .
+}
+WHERE {
+    ?s a foaf:Person .
+    OPTIONAL { ?s foaf:name ?n . }
+    OPTIONAL { ?s foaf:givenName ?g . }
+    OPTIONAL { ?s foaf:familyName ?f . }
+    OPTIONAL {
+        ?s datacite:hasIdentifier ?id .
+        OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
+        OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
+    }
+}

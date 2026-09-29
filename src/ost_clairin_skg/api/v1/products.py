@@ -1,12 +1,13 @@
 import logging
 from typing import Dict, Any, List, Optional
-
+import re
 import rdflib
 from fastapi import APIRouter, Request, Path, Query
 from fastapi.responses import JSONResponse
 
 from src.ost_clairin_skg.infra import commons
 from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX
+from src.ost_clairin_skg.api.v1.topics import extract_topic
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
 
 USER = app_settings.USER
@@ -18,22 +19,63 @@ router = APIRouter(prefix=API_PREFIX)
 SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
 SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
 
+# SKG-IF product_type derived from the fabio classes a work carries besides fabio:Work.
+# Works with none of these classes are reported as "other".
+_FABIO = "http://purl.org/spar/fabio/"
+PRODUCT_TYPE_CLASSES: Dict[str, List[str]] = {
+    "research data": [f"{_FABIO}Dataset"],
+    "research software": [f"{_FABIO}Software"],
+    "literature": [f"{_FABIO}{c}" for c in (
+        "Article", "JournalArticle", "Book", "BookChapter", "ConferencePaper", "Thesis", "Report",
+    )],
+}
+
+# We use this to search for {code:...} and strip if from text
+LANG_CODE_PREFIX = re.compile(r"^\{code:[^}]*\}")
+
+# RDF namespace definitions
+DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
+DC = rdflib.Namespace("http://purl.org/dc/terms/")
+SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
+FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
+BIDO = rdflib.Namespace("http://purl.org/spar/bido/")
+RDF = rdflib.RDF
+
+
+def _product_type(g: rdflib.Graph, subject) -> str:
+    types = {str(t) for t in g.objects(subject, rdflib.RDF.type)}
+    for product_type, classes in PRODUCT_TYPE_CLASSES.items():
+        if types.intersection(classes):
+            return product_type
+    return "other"
+
+
+def _topics(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
+    """SKG-IF topics of a product: terms linked via bido:holdsBibliometricDataInTime/bido:withBibliometricData."""
+    topics = []
+    for bd in g.objects(subject, BIDO.holdsBibliometricDataInTime):
+        for term in g.objects(bd, BIDO.withBibliometricData):
+            if (term, RDF.type, FABIO.SubjectTerm) in g:
+                topics.append({"term": extract_topic(g, term, commons.strip_local_id_prefix(str(term)))})
+    return topics
+
+
+def _product_type_filter(product_type: str) -> str:
+    """SPARQL pattern restricting ?s to works of the given SKG-IF product_type."""
+    if product_type == "other":
+        all_classes = ", ".join(f"<{c}>" for classes in PRODUCT_TYPE_CLASSES.values() for c in classes)
+        return f"FILTER NOT EXISTS {{ ?s a ?ftype . FILTER(?ftype IN ({all_classes})) }} ."
+    classes = ", ".join(f"<{c}>" for c in PRODUCT_TYPE_CLASSES[product_type])
+    return f"FILTER EXISTS {{ ?s a ?ftype . FILTER(?ftype IN ({classes})) }} ."
+
 
 # --- helpers: keep RDF->JSON-LD and context selection here ---
-
 
 
 def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
     """Convert RDF turtle data to SKG-IF product JSON-LD format."""
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
-
-    # RDF namespace definitions
-    DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
-    DC = rdflib.Namespace("http://purl.org/dc/terms/")
-    SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
-    FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
-    RDF = rdflib.RDF
 
     # Find the main product subject (should be a fabio:Work)
     product_subject = None
@@ -48,18 +90,26 @@ def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
     product: Dict[str, Any] = {
         "local_identifier": str(product_id),
         "entity_type": "product",
-        "product_type": "literature",
+        "product_type": _product_type(g, product_subject),
     }
 
     # Extract titles
-    titles = list(g.objects(product_subject, DC.title))
+    titles: Dict[str, List[str]] = {}
+    for t in g.objects(product_subject, DC.title):
+        lang = getattr(t, "language", None)
+        key = lang if lang and len(lang) == 2 else "none"
+        titles.setdefault(key, []).append(LANG_CODE_PREFIX.sub("", str(t)))
     if titles:
-        product["titles"] = {"en": [str(t) for t in titles]}
+        product["titles"] = titles
 
     # Extract abstracts
-    abstracts = list(g.objects(product_subject, DC.abstract))
+    abstracts: Dict[str, List[str]] = {}
+    for a in g.objects(product_subject, DC.abstract):
+        lang = getattr(a, "language", None)
+        key = lang if lang and len(lang) == 2 else "none"
+        abstracts.setdefault(key, []).append(LANG_CODE_PREFIX.sub("", str(a)))
     if abstracts:
-        product["abstracts"] = {"en": [str(a) for a in abstracts]}
+        product["abstracts"] = abstracts
 
     # Extract identifiers
     identifiers: list = []
@@ -85,6 +135,10 @@ def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
     if identifiers:
         product["identifiers"] = identifiers
 
+    topics = _topics(g, product_subject)
+    if topics:
+        product["topics"] = topics
+
     return product
 
 
@@ -100,7 +154,6 @@ def _build_skg_if_response(product_data: Dict[str, Any], base_url: str = "https:
         ],
         "@graph": [product_data]
     }
-
 
 @router.get("/products/{id:path}", tags=["Product"])
 def get_product(id: str = Path(..., description="Product identifier (local ID or full URI)"), request: Request = None):
@@ -134,7 +187,11 @@ def get_product(id: str = Path(..., description="Product identifier (local ID or
 
     try:
         # Transform RDF to SKG-IF product format
-        product_data = _rdf_graph_to_product(turtle_data, id)
+        try:
+            product_data = _rdf_graph_to_product(turtle_data, commons.strip_local_id_prefix(id))
+        except ValueError:
+            # GraphDB returns only prefix declarations when the CONSTRUCT matches nothing
+            return JSONResponse(status_code=404, content={"detail": "Product not found"})
 
         # Build response with SKG-IF contexts -- compute base_url from request if available
         if request is not None:
@@ -157,32 +214,33 @@ def _rdf_graph_to_products(turtle_data: str) -> List[Dict[str, Any]]:
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
 
-    # RDF namespace definitions
-    DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
-    DC = rdflib.Namespace("http://purl.org/dc/terms/")
-    SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
-    FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
-    RDF = rdflib.RDF
-
     products = []
 
     # Find all fabio:Work subjects
     for product_subject in g.subjects(RDF.type, FABIO.Work):
         product: Dict[str, Any] = {
-            "local_identifier": str(product_subject),
+            "local_identifier": commons.strip_local_id_prefix(str(product_subject)),
             "entity_type": "product",
-            "product_type": "literature",
+            "product_type": _product_type(g, product_subject),
         }
 
         # Extract titles
-        titles = list(g.objects(product_subject, DC.title))
+        titles: Dict[str, List[str]] = {}
+        for t in g.objects(product_subject, DC.title):
+            lang = getattr(t, "language", None)
+            key = lang if lang and len(lang) == 2 else "none"
+            titles.setdefault(key, []).append(LANG_CODE_PREFIX.sub("", str(t)))
         if titles:
-            product["titles"] = {"en": [str(t) for t in titles]}
+            product["titles"] = titles
 
         # Extract abstracts
-        abstracts = list(g.objects(product_subject, DC.abstract))
+        abstracts: Dict[str, List[str]] = {}
+        for a in g.objects(product_subject, DC.abstract):
+            lang = getattr(a, "language", None)
+            key = lang if lang and len(lang) == 2 else "none"
+            abstracts.setdefault(key, []).append(LANG_CODE_PREFIX.sub("", str(a)))
         if abstracts:
-            product["abstracts"] = {"en": [str(a) for a in abstracts]}
+            product["abstracts"] = abstracts
 
         # Extract identifiers
         identifiers: list = []
@@ -207,6 +265,10 @@ def _rdf_graph_to_products(turtle_data: str) -> List[Dict[str, Any]]:
 
         if identifiers:
             product["identifiers"] = identifiers
+
+        topics = _topics(g, product_subject)
+        if topics:
+            product["topics"] = topics
 
         products.append(product)
 
@@ -234,7 +296,7 @@ def get_products(
 
     | Key | Description |
     |-----|-------------|
-    | `product_type` / `type` | RDF type, e.g. `literature` |
+    | `product_type` / `type` | `literature`, `research data`, `research software`, `other`, or an RDF type URI |
     | `cf.search.title` / `title` | Case-insensitive substring match on title |
     | `cf.search.title_abstract` | Substring match on title **or** abstract |
     | `cf.contributions_orcid` | Contributor ORCID value |
@@ -303,11 +365,12 @@ def get_products(
             if name in ('product_type', 'type'):
                 # Map common product_type tokens to RDF classes where appropriate
                 low = value.strip().lower()
+                if low in ('publication', 'text'):
+                    low = 'literature'
                 if value.startswith('http://') or value.startswith('https://'):
                     filters.append(f"?s a <{value}> .")
-                elif low in ('literature', 'publication', 'text'):
-                    # Treat 'literature' as fabio:Work
-                    filters.append("?s a fabio:Work .")
+                elif low in PRODUCT_TYPE_CLASSES or low == 'other':
+                    filters.append(_product_type_filter(low))
                 else:
                     # Generic match on rdf:type URI containing the token
                     filters.append(f"?s a ?type . FILTER(CONTAINS(LCASE(STR(?type)), LCASE(\"{value}\"))) .")
