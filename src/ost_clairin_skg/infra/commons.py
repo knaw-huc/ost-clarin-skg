@@ -1,8 +1,27 @@
 import os
-
 import tomli
+import rdflib
+import re
 from dynaconf import Dynaconf
+
 build_date = os.environ.get("BUILD_DATE", "unknown")
+
+# SKG-IF context URLs
+SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
+SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
+SKG_IF_CONTEXT_EXT_SRV = "https://w3id.org/skg-if/extension/srv/context/skg-if.json"
+
+# RDF namespace definitions
+DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
+DC = rdflib.Namespace("http://purl.org/dc/terms/")
+SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
+FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
+BIDO = rdflib.Namespace("http://purl.org/spar/bido/")
+FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
+SRV = rdflib.Namespace("https://w3id.org/skg-if/extension/srv/ontology/")
+RDF = rdflib.RDF
+
+LANG_CODE_PREFIX = re.compile(r"^\{code:[^}]*\}")
 
 def _normalize_prefix(raw: str | None, default: str = "/api/v1") -> str:
     if not raw:

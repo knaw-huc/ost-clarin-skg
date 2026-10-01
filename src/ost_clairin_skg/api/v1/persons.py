@@ -1,24 +1,15 @@
 import json
 import logging
+import rdflib
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
-
-import rdflib
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
-
 from src.ost_clairin_skg.infra import commons
-from src.ost_clairin_skg.infra.commons import API_PREFIX
+from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_ONTOLOGY
+from src.ost_clairin_skg.infra.commons import DATACITE, SILVIO, FOAF
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
-
 router = APIRouter(prefix=API_PREFIX)
-
-SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
-SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
-
-DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
-SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
-FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
 
 # filter key -> (graph pattern with {v} as the value variable, match mode)
 # The pattern is prefixed with the subject ?s; identifier filters go through an intermediate node.

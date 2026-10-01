@@ -1,28 +1,18 @@
 import json
 import logging
-import re
+import rdflib
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
-
-import rdflib
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
-
 from src.ost_clairin_skg.api.v1.organizations import _extract_organisation
 from src.ost_clairin_skg.infra import commons
-from src.ost_clairin_skg.infra.commons import API_PREFIX
+from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_EXT_SRV
+from src.ost_clairin_skg.infra.commons import DC, FOAF, SRV
+from src.ost_clairin_skg.infra.commons import LANG_CODE_PREFIX
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
 
 router = APIRouter(prefix=API_PREFIX)
-
-# SKG-IF context URLs; services additionally need the srv extension context
-SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
-SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
-SKG_IF_CONTEXT_EXT_SRV = "https://w3id.org/skg-if/extension/srv/context/skg-if.json"
-
-DC = rdflib.Namespace("http://purl.org/dc/terms/")
-FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
-SRV = rdflib.Namespace("https://w3id.org/skg-if/extension/srv/ontology/")
 
 # Organisation / venue classes -> SKG-IF srv extension types
 ORGANISATION_TYPES = {
@@ -32,9 +22,6 @@ ORGANISATION_TYPES = {
 VENUE_TYPES = {
     SRV.Portal: "srv_portal",
 }
-
-# The harvest stores descriptions as "{code:und}text"@und; the prefix is redundant with the language tag
-_DESCRIPTION_CODE_PREFIX = re.compile(r"^\{code:[^}]*\}")
 
 _ORG_LINKS = {
     "relevant_organisations": "dc:relation",
@@ -93,7 +80,7 @@ def _extract_service(g: rdflib.Graph, subject, local_identifier: str) -> Dict[st
     for description in g.objects(subject, DC.description):
         lang = getattr(description, "language", None)
         key = lang if lang and len(lang) == 2 else "none"
-        descriptions.setdefault(key, []).append(_DESCRIPTION_CODE_PREFIX.sub("", str(description)))
+        descriptions.setdefault(key, []).append(LANG_CODE_PREFIX.sub("", str(description)))
     if descriptions:
         service["srv_descriptions"] = descriptions
 

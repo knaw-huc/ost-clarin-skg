@@ -6,7 +6,9 @@ from fastapi import APIRouter, Request, Path, Query
 from fastapi.responses import JSONResponse
 
 from src.ost_clairin_skg.infra import commons
-from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX
+from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_ONTOLOGY
+from src.ost_clairin_skg.infra.commons import DATACITE, DC, SILVIO, FABIO, BIDO, RDF
+from src.ost_clairin_skg.infra.commons import LANG_CODE_PREFIX
 from src.ost_clairin_skg.api.v1.topics import extract_topic
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
 
@@ -15,32 +17,15 @@ PASS = app_settings.PASS
 ENDPOINT = app_settings.ENDPOINT
 router = APIRouter(prefix=API_PREFIX)
 
-# SKG-IF context URLs
-SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
-SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
-
 # SKG-IF product_type derived from the fabio classes a work carries besides fabio:Work.
 # Works with none of these classes are reported as "other".
-_FABIO = "http://purl.org/spar/fabio/"
 PRODUCT_TYPE_CLASSES: Dict[str, List[str]] = {
-    "research data": [f"{_FABIO}Dataset"],
-    "research software": [f"{_FABIO}Software"],
-    "literature": [f"{_FABIO}{c}" for c in (
+    "research data": [f"{FABIO}Dataset"],
+    "research software": [f"{FABIO}Software"],
+    "literature": [f"{FABIO}{c}" for c in (
         "Article", "JournalArticle", "Book", "BookChapter", "ConferencePaper", "Thesis", "Report",
     )],
 }
-
-# We use this to search for {code:...} and strip if from text
-LANG_CODE_PREFIX = re.compile(r"^\{code:[^}]*\}")
-
-# RDF namespace definitions
-DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
-DC = rdflib.Namespace("http://purl.org/dc/terms/")
-SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
-FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
-BIDO = rdflib.Namespace("http://purl.org/spar/bido/")
-RDF = rdflib.RDF
-
 
 def _product_type(g: rdflib.Graph, subject) -> str:
     types = {str(t) for t in g.objects(subject, rdflib.RDF.type)}

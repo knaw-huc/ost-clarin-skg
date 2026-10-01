@@ -1,25 +1,16 @@
 import json
 import logging
+import rdflib
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
-
-import rdflib
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
-
 from src.ost_clairin_skg.infra import commons
-from src.ost_clairin_skg.infra.commons import API_PREFIX
+from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API
+from src.ost_clairin_skg.infra.commons import DATACITE, SILVIO, FABIO
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
 
 router = APIRouter(prefix=API_PREFIX)
-
-# SKG-IF context URLs
-SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
-SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
-
-DATACITE = rdflib.Namespace("http://purl.org/spar/datacite/")
-SILVIO = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
-FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
 
 # filter key -> (predicate path with {v} as the value variable, match mode); see commons.build_filter_patterns
 TOPIC_FILTERS = {
@@ -41,7 +32,6 @@ def extract_topic(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, 
     labels: Dict[str, str] = {}
     for label in sorted(g.objects(subject, rdflib.SKOS.prefLabel), key=str):
         lang = getattr(label, "language", None)
-        key = lang if lang and len(lang) == 2 else "none"
         labels.setdefault(lang if lang and len(lang) == 2 else "none", str(label))
     if labels:
         topic["labels"] = labels
