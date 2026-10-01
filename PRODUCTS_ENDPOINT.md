@@ -195,6 +195,7 @@ In the `product_type` filter, `publication` and `text` are accepted as aliases f
 |--------|------|------|
 | `404` | Single product not found | `{"detail": "Product not found"}` |
 | `422` | Unsupported filter key | `{"detail": "Unsupported filter(s) requested", "unsupported_filters": [...]}` |
+| `422` | URI value of `product_type`/`type`, `cf.contributions_aff_ror`, `cf.cites` or `cf.cited_by` contains characters not allowed in an IRI | `{"detail": "Invalid IRI(s) in filter", "invalid_iris": [...]}` |
 | `422` | Invalid `page`/`limit`/`page_size`, or `filter` not in `name:value` form | FastAPI validation error |
 | `502` | Triplestore query failed | `{"detail": "Failed to query triplestore", "error": "..."}` |
 | `502` | RDF → JSON-LD conversion failed | `{"detail": "Failed to convert triplestore response to JSON-LD", "error": "..."}` |

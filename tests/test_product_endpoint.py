@@ -269,6 +269,20 @@ class TestProductEndpoint:
         assert f"VALUES ?s {{ <{uri_id}> }}" in mock_query.call_args[0][0]
 
     @patch('src.ost_clairin_skg.api.v1.products.query_triplestore')
+    def test_product_endpoint_with_invalid_uri_id(self, mock_query):
+        """A URI id with characters not allowed in an IRI is compared as a string instead of injected as <...>."""
+        from rdflib.plugins.sparql import parser
+        mock_query.return_value = ""
+
+        response = client.get("/api/v1/products/http%3A%2F%2Fx%3E%20%7D%20%23")
+
+        assert response.status_code == 404
+        sparql = mock_query.call_args[0][0]
+        assert "VALUES ?s" not in sparql
+        assert 'FILTER(STR(?s) = "http://x> } #"' in sparql
+        parser.parseQuery(sparql)
+
+    @patch('src.ost_clairin_skg.api.v1.products.query_triplestore')
     def test_product_endpoint_no_match_returns_404(self, mock_query):
         """GraphDB returns only prefix declarations when nothing matches."""
         mock_query.return_value = "@prefix fabio: <http://purl.org/spar/fabio/> ."
@@ -300,6 +314,30 @@ class TestProductEndpoint:
         sparql = mock_query.call_args[0][0]
         assert "FILTER NOT EXISTS { ?s a ?ftype . FILTER(?ftype IN (<http://purl.org/spar/fabio/Dataset>" in sparql
         assert "<http://purl.org/spar/fabio/Software>" in sparql
+
+    @pytest.mark.parametrize("key", ["cf.search.title_abstract", "cf.cites"])
+    @patch('src.ost_clairin_skg.api.v1.products.query_triplestore')
+    def test_filter_value_is_escaped(self, mock_query, key):
+        """Quotes and backslashes in a filter value end up inside a valid SPARQL string literal."""
+        from rdflib.plugins.sparql import parser
+        mock_query.return_value = ""
+
+        response = client.get("/api/v1/products", params={"filter": f'{key}:a"b\\c'})
+
+        assert response.status_code == 200
+        sparql = mock_query.call_args[0][0]
+        assert '"a\\"b\\\\c"' in sparql
+        parser.parseQuery(sparql)
+
+    @pytest.mark.parametrize("key", ["product_type", "cf.contributions_aff_ror", "cf.cites", "cf.cited_by"])
+    @patch('src.ost_clairin_skg.api.v1.products.query_triplestore')
+    def test_filter_invalid_iri_rejected(self, mock_query, key):
+        """A URI filter value with characters not allowed in an IRI is rejected before querying."""
+        response = client.get("/api/v1/products", params={"filter": f"{key}:http://x> }} #"})
+
+        assert response.status_code == 422
+        assert response.json()["invalid_iris"] == ["http://x> } #"]
+        mock_query.assert_not_called()
 
     @patch('src.ost_clairin_skg.api.v1.products.query_triplestore')
     def test_products_list_strips_otf_prefix(self, mock_query):

@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Dict, Any, List, Optional
 import re
@@ -295,6 +296,7 @@ def get_products(
     **Responses**
     - `200` — JSON-LD list (may be empty)
     - `422` — unsupported filter key supplied
+    - `422` — URI filter value with characters not allowed in an IRI
     - `502` — triplestore unreachable or returned unexpected data
     """
     # If client provided page_size, treat it as an alias for limit
@@ -326,6 +328,9 @@ def get_products(
         # - contributions.person.identifiers.scheme* (starts with)
         # - any name that ends with '.scheme'
         unsupported = []
+        # Filters that put a URI value in the query as <value>
+        iri_filters = {'product_type', 'type', 'cf.contributions_aff_ror', 'cf.cites', 'cf.cited_by'}
+        invalid_iris = []
 
         for part in parts:
             if ':' not in part:
@@ -333,6 +338,7 @@ def get_products(
             name, value = part.split(':', 1)
             name = name.strip()
             value = value.strip()
+            literal = json.dumps(value)  # SPARQL string literal with quotes and backslashes escaped
 
             # Validate supported names/patterns first
             is_supported = (
@@ -344,6 +350,10 @@ def get_products(
 
             if not is_supported:
                 unsupported.append(name)
+                continue
+
+            if name in iri_filters and commons._is_uri(value) and not commons.is_valid_iri(value):
+                invalid_iris.append(value)
                 continue
 
             # --- product type / rdf:type ---
@@ -358,20 +368,20 @@ def get_products(
                     filters.append(_product_type_filter(low))
                 else:
                     # Generic match on rdf:type URI containing the token
-                    filters.append(f"?s a ?type . FILTER(CONTAINS(LCASE(STR(?type)), LCASE(\"{value}\"))) .")
+                    filters.append(f"?s a ?type . FILTER(CONTAINS(LCASE(STR(?type)), LCASE({literal}))) .")
 
             # --- title / title OR abstract search ---
             elif name == 'cf.search.title' or name == 'title':
-                filters.append(f"?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE(\"{value}\"))) .")
+                filters.append(f"?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE({literal}))) .")
             elif name == 'cf.search.title_abstract':
                 filters.append(
-                    f"FILTER( EXISTS {{ ?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE(\"{value}\"))) }} || EXISTS {{ ?s dc:abstract ?a . FILTER(CONTAINS(LCASE(STR(?a)), LCASE(\"{value}\"))) }} ) ."
+                    f"FILTER( EXISTS {{ ?s dc:title ?t . FILTER(CONTAINS(LCASE(STR(?t)), LCASE({literal}))) }} || EXISTS {{ ?s dc:abstract ?a . FILTER(CONTAINS(LCASE(STR(?a)), LCASE({literal}))) }} ) ."
                 )
 
             # --- contributions: ORCID ---
             elif name == 'cf.contributions_orcid':
                 filters.append(
-                    f"?s skg:hasContribution ?contrib . ?contrib skg:hasAgent ?agent . ?agent datacite:hasIdentifier ?pid . ?pid silvio:hasLiteralValue \"{value}\" . ?pid datacite:usesIdentifierScheme ?ps . FILTER(CONTAINS(LCASE(STR(?ps)), \"orcid\")) ."
+                    f"?s skg:hasContribution ?contrib . ?contrib skg:hasAgent ?agent . ?agent datacite:hasIdentifier ?pid . ?pid silvio:hasLiteralValue {literal} . ?pid datacite:usesIdentifierScheme ?ps . FILTER(CONTAINS(LCASE(STR(?ps)), \"orcid\")) ."
                 )
 
             # --- contributions: affiliation ROR ---
@@ -379,47 +389,52 @@ def get_products(
                 if value.startswith('http://') or value.startswith('https://'):
                     filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations <{value}> .")
                 else:
-                    filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations ?aff . ?aff skg:ror ?ror . FILTER(CONTAINS(LCASE(STR(?ror)), LCASE(\"{value}\"))) .")
+                    filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations ?aff . ?aff skg:ror ?ror . FILTER(CONTAINS(LCASE(STR(?ror)), LCASE({literal}))) .")
 
             # --- contributions: affiliation country ---
             elif name == 'cf.contributions_aff_country':
-                filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations ?aff . ?aff skg:country ?country . FILTER(LCASE(STR(?country)) = LCASE(\"{value}\")) .")
+                filters.append(f"?s skg:hasContribution ?contrib . ?contrib skg:declaredAffiliations ?aff . ?aff skg:country ?country . FILTER(LCASE(STR(?country)) = LCASE({literal})) .")
 
             # --- cites / cited_by by local identifier or URI ---
             elif name == 'cf.cites':
                 if value.startswith('http://') or value.startswith('https://'):
                     filters.append(f"?s skg:cites <{value}> .")
                 else:
-                    filters.append(f"?s skg:cites ?other . ?other silvio:hasLiteralValue \"{value}\" .")
+                    filters.append(f"?s skg:cites ?other . ?other silvio:hasLiteralValue {literal} .")
 
             elif name == 'cf.cited_by':
                 if value.startswith('http://') or value.startswith('https://'):
                     filters.append(f"?other skg:cites <{value}> . ?other ?p ?o .")
                 else:
-                    filters.append(f"?other skg:cites ?s . ?other silvio:hasLiteralValue \"{value}\" .")
+                    filters.append(f"?other skg:cites ?s . ?other silvio:hasLiteralValue {literal} .")
 
             # --- cites/cited_by by DOI ---
             elif name == 'cf.cites_doi':
                 filters.append(
-                    f"?s skg:cites ?other . ?other datacite:hasIdentifier ?idc . ?idc silvio:hasLiteralValue \"{value}\" . ?idc datacite:usesIdentifierScheme ?schc . FILTER(CONTAINS(LCASE(STR(?schc)), \"doi\")) ."
+                    f"?s skg:cites ?other . ?other datacite:hasIdentifier ?idc . ?idc silvio:hasLiteralValue {literal} . ?idc datacite:usesIdentifierScheme ?schc . FILTER(CONTAINS(LCASE(STR(?schc)), \"doi\")) ."
                 )
 
             elif name == 'cf.cited_by_doi':
                 filters.append(
-                    f"?other skg:cites ?s . ?other datacite:hasIdentifier ?idc . ?idc silvio:hasLiteralValue \"{value}\" . ?idc datacite:usesIdentifierScheme ?schc . FILTER(CONTAINS(LCASE(STR(?schc)), \"doi\")) ."
+                    f"?other skg:cites ?s . ?other datacite:hasIdentifier ?idc . ?idc silvio:hasLiteralValue {literal} . ?idc datacite:usesIdentifierScheme ?schc . FILTER(CONTAINS(LCASE(STR(?schc)), \"doi\")) ."
                 )
 
             # --- backward/compatibility: nested contributions.person.* patterns ---
             elif name.startswith('contributions.person.identifiers.id'):
-                filters.append(f"?s datacite:hasIdentifier ?id . ?id silvio:hasLiteralValue \"{value}\" .")
+                filters.append(f"?s datacite:hasIdentifier ?id . ?id silvio:hasLiteralValue {literal} .")
             elif name.startswith('contributions.person.identifiers.scheme') or name.endswith('.scheme'):
-                filters.append(f"?s datacite:hasIdentifier ?id . ?id datacite:usesIdentifierScheme ?scheme . FILTER( LCASE(STR(?scheme)) = LCASE(\"{value}\") ) .")
+                filters.append(f"?s datacite:hasIdentifier ?id . ?id datacite:usesIdentifierScheme ?scheme . FILTER( LCASE(STR(?scheme)) = LCASE({literal}) ) .")
 
         # If any unsupported filters were requested, return 422
         if unsupported:
             return JSONResponse(status_code=422, content={
                 "detail": "Unsupported filter(s) requested",
                 "unsupported_filters": unsupported
+            })
+        if invalid_iris:
+            return JSONResponse(status_code=422, content={
+                "detail": "Invalid IRI(s) in filter",
+                "invalid_iris": invalid_iris
             })
 
         # Combine filters with newline (AND semantics)

@@ -103,6 +103,15 @@ def _is_uri(val: str) -> bool:
     return val.startswith("http://") or val.startswith("https://")
 
 
+# Characters a SPARQL IRIREF may not contain; such values must not be placed inside <...>
+_IRI_INVALID_CHARS = re.compile(r'[\x00-\x20<>"{}|^`\\]')
+
+
+def is_valid_iri(val: str) -> bool:
+    """True if val can be safely written as <val> in a SPARQL query."""
+    return not _IRI_INVALID_CHARS.search(val)
+
+
 # Subject IRIs in the triplestore carry this scheme prefix; it is hidden from API output
 LOCAL_ID_PREFIX = "otf:"
 
@@ -127,7 +136,7 @@ def build_filter_clause(product_id: str) -> str:
     """
     import json as _json
     pid_literal = _json.dumps(product_id)
-    if _is_uri(product_id):
+    if _is_uri(product_id) and is_valid_iri(product_id):
         return f"VALUES ?s {{ <{product_id}> }} ."
     subject_literal = _json.dumps(add_local_id_prefix(product_id))
     return (
