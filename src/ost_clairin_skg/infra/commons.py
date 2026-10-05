@@ -19,6 +19,9 @@ FABIO = rdflib.Namespace("http://purl.org/spar/fabio/")
 BIDO = rdflib.Namespace("http://purl.org/spar/bido/")
 FOAF = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
 SRV = rdflib.Namespace("https://w3id.org/skg-if/extension/srv/ontology/")
+FRBR = rdflib.Namespace("http://purl.org/vocab/frbr/core#")
+PSO = rdflib.Namespace("http://purl.org/spar/pso/")
+DCAT = rdflib.Namespace("http://www.w3.org/ns/dcat#")
 RDF = rdflib.RDF
 
 LANG_CODE_PREFIX = re.compile(r"^\{code:[^}]*\}")

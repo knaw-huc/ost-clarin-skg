@@ -3,12 +3,13 @@ import logging
 from typing import Dict, Any, List, Optional
 import re
 import rdflib
+from rdflib import RDFS
 from fastapi import APIRouter, Request, Path, Query
 from fastapi.responses import JSONResponse
 
 from src.ost_clairin_skg.infra import commons
 from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_ONTOLOGY
-from src.ost_clairin_skg.infra.commons import DATACITE, DC, SILVIO, FABIO, BIDO, RDF
+from src.ost_clairin_skg.infra.commons import DATACITE, DC, SILVIO, FABIO, BIDO, RDF, FRBR, PSO, DCAT, FOAF
 from src.ost_clairin_skg.infra.commons import LANG_CODE_PREFIX
 from src.ost_clairin_skg.api.v1.topics import extract_topic
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
@@ -44,6 +45,55 @@ def _topics(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
             if (term, RDF.type, FABIO.SubjectTerm) in g:
                 topics.append({"term": extract_topic(g, term, commons.strip_local_id_prefix(str(term)))})
     return topics
+
+
+# SKG-IF access_rights.status for the pso statuses of a manifestation
+ACCESS_RIGHTS_STATUS: Dict[rdflib.URIRef, str] = {
+    PSO["open-access"]: "open",
+    PSO["closed-access"]: "closed",
+    PSO["restricted-access"]: "restricted",
+    PSO["embargoed"]: "embargoed",
+    PSO["unpublished"]: "unavailable",
+}
+
+
+def _manifestations(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
+    """SKG-IF manifestations of a product: one per fabio:Expression linked via frbr:realization.
+
+    The ontology puts access rights and hosting data source on the Expression, but this
+    triplestore keeps them (and the licence) on the Expression's frbr:embodiment, so they
+    are read from there. Manifestations without any of these fields are left out.
+    """
+    manifestations = []
+    for expression in sorted(g.objects(subject, FRBR.realization)):
+        manifestation: Dict[str, Any] = {}
+        for embodiment in g.objects(expression, FRBR.embodiment):
+            for sit in g.objects(embodiment, PSO.holdsStatusInTime):
+                status = ACCESS_RIGHTS_STATUS.get(g.value(sit, PSO.withStatus))
+                if status:
+                    access_rights = {"status": status}
+                    description = g.value(sit, RDFS.comment)
+                    if description is not None:
+                        access_rights["description"] = str(description)
+                    manifestation["access_rights"] = access_rights
+
+            licences = sorted(str(lic) for lic in g.objects(embodiment, DC.license))
+            if licences:
+                manifestation["license"] = licences[0]
+
+            data_sources = sorted(g.objects(embodiment, DCAT.accessService))
+            if data_sources:
+                data_source: Dict[str, Any] = {
+                    "local_identifier": commons.strip_local_id_prefix(str(data_sources[0])),
+                    "entity_type": "datasource",
+                }
+                name = g.value(data_sources[0], FOAF.name)
+                if name is not None:
+                    data_source["name"] = str(name)
+                manifestation["biblio"] = {"hosting_data_source": data_source}
+        if manifestation:
+            manifestations.append(manifestation)
+    return manifestations
 
 
 def _product_type_filter(product_type: str) -> str:
@@ -124,6 +174,10 @@ def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
     topics = _topics(g, product_subject)
     if topics:
         product["topics"] = topics
+
+    manifestations = _manifestations(g, product_subject)
+    if manifestations:
+        product["manifestations"] = manifestations
 
     return product
 
@@ -255,6 +309,10 @@ def _rdf_graph_to_products(turtle_data: str) -> List[Dict[str, Any]]:
         topics = _topics(g, product_subject)
         if topics:
             product["topics"] = topics
+
+        manifestations = _manifestations(g, product_subject)
+        if manifestations:
+            product["manifestations"] = manifestations
 
         products.append(product)
 

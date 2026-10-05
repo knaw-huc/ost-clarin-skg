@@ -163,6 +163,7 @@ The `local_identifier` echoes the requested `{id}` (without the `otf:` prefix).
 | `abstracts` | object | No | Language-keyed abstracts (`dc:abstract`) |
 | `identifiers` | array | No | `{value, scheme}` objects (`datacite:hasIdentifier`) |
 | `topics` | array | No | `{term: topic}` objects; see [Topics](#topics) |
+| `manifestations` | array | No | See [Manifestations](#manifestations) |
 
 Language keys are the literal's language tag when it is two letters, otherwise `none`. A leading `{code:...}` marker in harvested text is stripped. Identifier schemes are the lowercased local name of the scheme IRI (e.g. `datacite:doi` → `doi`).
 
@@ -173,6 +174,35 @@ A topic is a `fabio:SubjectTerm` reached via `bido:holdsBibliometricDataInTime/b
 ```json
 "topics": [
   { "term": { "local_identifier": "otf___topic___tcof", "entity_type": "topic", "labels": { "none": "tcof" } } }
+]
+```
+
+### Manifestations
+
+SKG-IF maps manifestations to the `fabio:Expression`s a work links to via `frbr:realization`. In this triplestore the manifestation's fields sit on the Expression's `frbr:embodiment` (a `fabio:Manifestation`), so they are read from there:
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `access_rights.status` | `pso:holdsStatusInTime/pso:withStatus` | `pso:open-access` → `open`, `closed-access` → `closed`, `restricted-access` → `restricted`, `embargoed` → `embargoed`, `unpublished` → `unavailable`; other statuses are ignored |
+| `access_rights.description` | `rdfs:comment` on the status | |
+| `license` | `dcterms:license` | IRIs only. Local codes such as `PUB`, `RES` and `UNSPECIFIED` are skipped. If there are several licences, the first in sort order is used |
+| `biblio.hosting_data_source` | `dcat:accessService` | `{local_identifier, entity_type: datasource, name}`, where `name` comes from `foaf:name`. If there are several, the first in sort order is used |
+
+`license` and `hosting_data_source` (nested in `biblio`) follow the names in the SKG-IF 1.1.0 JSON-LD context. A manifestation with none of these fields is left out. `type`, `dates`, `identifiers`, `peer_review` and `version` are not in the data, so they are not output.
+
+```json
+"manifestations": [
+  {
+    "access_rights": { "status": "open" },
+    "license": "http://www.apache.org/licenses/LICENSE-2.0",
+    "biblio": {
+      "hosting_data_source": {
+        "local_identifier": "otf___ds___ims_clarin_d_centre_university_of_stuttgart",
+        "entity_type": "datasource",
+        "name": "IMS, CLARIN-D Centre, University of Stuttgart"
+      }
+    }
+  }
 ]
 ```
 

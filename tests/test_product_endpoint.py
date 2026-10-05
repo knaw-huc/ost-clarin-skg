@@ -137,6 +137,47 @@ class TestRDFToProductTransformation:
         }}]
         assert "topics" not in _rdf_graph_to_product(SAMPLE_TURTLE_DATA, "p")
 
+    def test_manifestations_extraction(self):
+        """Manifestation fields are read from the embodiment of the work's frbr:realization."""
+        turtle = """
+        @prefix fabio: <http://purl.org/spar/fabio/> .
+        @prefix frbr: <http://purl.org/vocab/frbr/core#> .
+        @prefix pso: <http://purl.org/spar/pso/> .
+        @prefix dcat: <http://www.w3.org/ns/dcat#> .
+        @prefix dc: <http://purl.org/dc/terms/> .
+        @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        <otf:product___p> a fabio:Work ; frbr:realization <otf:product___p#expression> .
+        <otf:product___p#expression> a fabio:Expression ; frbr:embodiment <otf:product___p#manifestation> .
+        <otf:product___p#manifestation> a fabio:Manifestation ;
+          dc:license <https://creativecommons.org/licenses/by/4.0/> ;
+          pso:holdsStatusInTime [ a pso:StatusInTime ; pso:withStatus pso:restricted-access ;
+                                  rdfs:comment "Academic/Restricted access" ] ;
+          dcat:accessService <otf:otf___ds___repo> .
+        <otf:otf___ds___repo> a dcat:DataService ; foaf:name "Some Repository" .
+        """
+        product = _rdf_graph_to_product(turtle, "p")
+
+        assert product["manifestations"] == [{
+            "access_rights": {"status": "restricted", "description": "Academic/Restricted access"},
+            "license": "https://creativecommons.org/licenses/by/4.0/",
+            "biblio": {"hosting_data_source": {
+                "local_identifier": "otf___ds___repo",
+                "entity_type": "datasource",
+                "name": "Some Repository",
+            }},
+        }]
+
+    def test_manifestations_without_fields_are_omitted(self):
+        turtle = """
+        @prefix fabio: <http://purl.org/spar/fabio/> .
+        @prefix frbr: <http://purl.org/vocab/frbr/core#> .
+        <http://example.com/product> a fabio:Work ; frbr:realization <http://example.com/product#expression> .
+        <http://example.com/product#expression> a fabio:Expression ;
+          frbr:embodiment <http://example.com/product#manifestation> .
+        """
+        assert "manifestations" not in _rdf_graph_to_product(turtle, "p")
+
     def test_no_fabio_work_raises_error(self):
         """Test that missing fabio:Work raises appropriate error."""
         invalid_turtle = """

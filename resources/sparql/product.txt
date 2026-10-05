@@ -5,6 +5,11 @@ PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
 PREFIX bido:     <http://purl.org/spar/bido/>
 PREFIX fabio:    <http://purl.org/spar/fabio/>
 PREFIX skg:      <https://w3id.org/skg-if/ontology/>
+PREFIX frbr:     <http://purl.org/vocab/frbr/core#>
+PREFIX pso:      <http://purl.org/spar/pso/>
+PREFIX dcat:     <http://www.w3.org/ns/dcat#>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
 
 CONSTRUCT {
   ?s a fabio:Work , skg:Product , ?ptype ;
@@ -22,6 +27,15 @@ CONSTRUCT {
          datacite:hasIdentifier ?tid .
   ?tid datacite:usesIdentifierScheme ?tscheme ;
        silvio:hasLiteralValue ?tpid .
+  ?s frbr:realization ?e .
+  ?e a fabio:Expression ;
+     frbr:embodiment ?m .
+  ?m dc:license ?lic ;
+     pso:holdsStatusInTime ?sit ;
+     dcat:accessService ?ds .
+  ?sit pso:withStatus ?status ;
+       rdfs:comment ?sdesc .
+  ?ds foaf:name ?dsname .
 }
 WHERE {
     ?s a fabio:Work .
@@ -46,6 +60,26 @@ WHERE {
             ?topic datacite:hasIdentifier ?tid .
             OPTIONAL { ?tid datacite:usesIdentifierScheme ?tscheme . }
             OPTIONAL { ?tid silvio:hasLiteralValue ?tpid . }
+        }
+    }
+    # Manifestations: SKG-IF maps them to fabio:Expression via frbr:realization; here access rights,
+    # license and hosting data source are on the Expression's embodied fabio:Manifestation
+    OPTIONAL {
+        ?s frbr:realization ?e .
+        ?e a fabio:Expression .
+        OPTIONAL {
+            ?e frbr:embodiment ?m .
+            # Licenses that are not IRIs are local codes (PUB, RES, UNSPECIFIED), not licenses
+            OPTIONAL { ?m dc:license ?lic . FILTER(isIRI(?lic)) }
+            OPTIONAL {
+                ?m pso:holdsStatusInTime ?sit .
+                ?sit pso:withStatus ?status .
+                OPTIONAL { ?sit rdfs:comment ?sdesc . }
+            }
+            OPTIONAL {
+                ?m dcat:accessService ?ds .
+                OPTIONAL { ?ds foaf:name ?dsname . }
+            }
         }
     }
 }
