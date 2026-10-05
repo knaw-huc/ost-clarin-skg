@@ -279,18 +279,6 @@ def build_organisations_sparql(limit: int = 10, offset: int = 0, filter_clause: 
     return _build_page_sparql("sparql_organisations_path", limit, offset, filter_clause)
 
 
-# --- SPARQL builder utilities for datasource endpoint ---
-
-def build_datasource_sparql(filter_clause: str) -> str:
-    """Return the SPARQL CONSTRUCT text for a single data source, inserting filter_clause."""
-    return _load_sparql_with_filter("sparql_datasource_path", filter_clause)
-
-
-def build_datasources_sparql(limit: int = 10, offset: int = 0, filter_clause: str | None = None) -> str:
-    """Return the SPARQL CONSTRUCT text for one page of data sources with optional filter."""
-    return _build_page_sparql("sparql_datasources_path", limit, offset, filter_clause)
-
-
 # --- SPARQL builder utilities for service endpoint (SKG-IF srv extension) ---
 
 def build_service_sparql(filter_clause: str) -> str:
