@@ -1,0 +1,32 @@
+PREFIX datacite: <http://purl.org/spar/datacite/>
+PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX skg:      <https://w3id.org/skg-if/ontology/>
+
+
+CONSTRUCT {
+  ?s a skg:Agent, foaf:Organization ;
+     datacite:hasIdentifier ?id ;
+     foaf:name ?n ;
+     foaf:homepage ?h .
+  ?id datacite:usesIdentifierScheme ?scheme ;
+      silvio:hasLiteralValue ?pid .
+}
+WHERE {
+    # Select one page of distinct organisations first, so LIMIT/OFFSET count organisations rather than result rows
+    {
+        SELECT DISTINCT ?s WHERE {
+            ?s a foaf:Organization .
+            #FILTERS#
+        }
+        ORDER BY ?s
+        #PAGINATION#
+    }
+    OPTIONAL { ?s foaf:name ?n . }
+    OPTIONAL { ?s foaf:homepage ?h . }
+    OPTIONAL {
+        ?s datacite:hasIdentifier ?id .
+        OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
+        OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
+    }
+}

@@ -1,0 +1,21 @@
+PREFIX datacite: <http://purl.org/spar/datacite/>
+PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX fabio:    <http://purl.org/spar/fabio/>
+PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
+
+CONSTRUCT {
+  ?s a fabio:SubjectTerm ;
+     skos:prefLabel ?l ;
+     datacite:hasIdentifier ?id .
+  ?id datacite:usesIdentifierScheme ?scheme ;
+      silvio:hasLiteralValue ?pid .
+}
+WHERE {
+    ?s a fabio:SubjectTerm .
+    OPTIONAL { ?s skos:prefLabel ?l . }
+    OPTIONAL {
+        ?s datacite:hasIdentifier ?id .
+        OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
+        OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
+    }
+}
