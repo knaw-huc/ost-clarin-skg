@@ -392,6 +392,22 @@ class TestProductEndpoint:
 
         assert response.json()["@graph"][0]["local_identifier"] == "otf___product___x"
 
+    def test_products_list_total_items(self, mock_count):
+        with patch('src.ost_clairin_skg.api.v1.products.query_triplestore', return_value=""):
+            response = client.get("/api/v1/products?filter=product_type:other")
+
+        assert response.json()["meta"]["part_of"]["total_items"] == 42
+        count_sparql = mock_count["products"].call_args[0][0]
+        assert "SELECT (COUNT(DISTINCT ?s) AS ?total)" in count_sparql
+        assert "?s a fabio:Work" in count_sparql
+        assert "LIMIT" not in count_sparql
+
+    def test_products_next_page_only_when_more_items(self, mock_count):
+        mock_count["products"].return_value = 15
+        with patch('src.ost_clairin_skg.api.v1.products.query_triplestore', return_value=""):
+            assert "next_page" in client.get("/api/v1/products?page=1").json()["meta"]
+            assert "next_page" not in client.get("/api/v1/products?page=2").json()["meta"]
+
 
 class TestJSONLDCompliance:
     """Tests for JSON-LD format compliance."""

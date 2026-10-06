@@ -11,7 +11,7 @@ from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX, SKG_IF_C
 from src.ost_clairin_skg.infra.commons import DATACITE, DC, SILVIO, FABIO, BIDO, RDF, FRBR, PSO, DCAT, FOAF
 from src.ost_clairin_skg.infra.commons import LANG_CODE_PREFIX
 from src.ost_clairin_skg.api.v1.topics import extract_topic
-from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
+from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, count_triplestore
 
 USER = app_settings.USER
 PASS = app_settings.PASS
@@ -504,6 +504,7 @@ def get_products(
 
     try:
         turtle_data = query_triplestore(sparql)
+        total_items = count_triplestore(commons.build_count_sparql("sparql_products_path", filter_clause))
     except RuntimeError as exc:
         return JSONResponse(
             status_code=502,
@@ -536,7 +537,7 @@ def get_products(
         if effective_limit != 10:
             current_url += f"&limit={effective_limit}"
 
-    # Build next page URL (always include for pagination, even if we don't know if there are more items)
+    # Build next page URL (only included in the response when there are more items)
     next_page_url = f"{base_url}{api_path}?page={page + 1}"
     if used_page_size:
         if effective_limit != 10:
@@ -566,18 +567,19 @@ def get_products(
         "meta": {
             "local_identifier": current_url,
             "entity_type": "search_result_page",
-            "next_page": {
-                "local_identifier": next_page_url,
-                "entity_type": "search_result_page"
-            },
             "part_of": {
                 "local_identifier": search_url,
-                "entity_type": "search_result"
-                # Note: total_items would require a separate COUNT query
-                # Can be added if needed
+                "entity_type": "search_result",
+                "total_items": total_items
             }
         },
         "@graph": products
     }
+
+    if offset + effective_limit < total_items:
+        response["meta"]["next_page"] = {
+            "local_identifier": next_page_url,
+            "entity_type": "search_result_page"
+        }
 
     return JSONResponse(content=response, media_type="application/ld+json")

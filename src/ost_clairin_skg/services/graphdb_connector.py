@@ -35,3 +35,14 @@ def query_triplestore(sparql: str, accept: str = "text/turtle") -> str:
         raise RuntimeError(stderr or "curl failed")
     return proc.stdout.decode("utf-8").strip()
 
+
+
+def count_triplestore(sparql: str) -> int:
+    """Run a SPARQL SELECT that binds a single count variable and return it as an int."""
+    import json
+    response = query_triplestore(sparql, accept="application/sparql-results+json")
+    try:
+        bindings = json.loads(response)["results"]["bindings"]
+        return int(next(iter(bindings[0].values()))["value"]) if bindings else 0
+    except (ValueError, KeyError, TypeError, StopIteration) as exc:
+        raise RuntimeError(f"Unexpected count query response: {response[:200]}") from exc
