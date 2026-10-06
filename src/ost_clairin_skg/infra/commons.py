@@ -194,6 +194,29 @@ def _build_page_sparql(setting_name: str, limit: int, offset: int, filter_clause
     )
 
 
+_PAGE_SUBQUERY = re.compile(r"SELECT DISTINCT \?s WHERE \{(.*?)\}\s*ORDER BY", re.DOTALL)
+
+
+def build_count_sparql(setting_name: str, filter_clause: str | None) -> str:
+    """Return a SPARQL SELECT counting the distinct subjects matched by the list template
+    configured under `setting_name`, i.e. the total number of items across all pages."""
+    sparql_path = app_settings.get(setting_name)
+    if not sparql_path:
+        raise ValueError(f"{setting_name} not configured in settings")
+
+    with open(sparql_path, 'r') as f:
+        sparql_template = f.read().strip()
+
+    match = _PAGE_SUBQUERY.search(sparql_template)
+    construct_start = sparql_template.find("CONSTRUCT")
+    if not match or construct_start == -1:
+        raise ValueError(f"Invalid SPARQL template {sparql_path}: cannot derive count query")
+
+    prefixes = sparql_template[:construct_start]
+    pattern = match.group(1).replace("#FILTERS#", filter_clause or "")
+    return f"{prefixes}SELECT (COUNT(DISTINCT ?s) AS ?total) WHERE {{{pattern}}}"
+
+
 def build_products_sparql(limit: int = 10, offset: int = 0, filter_clause: str | None = None) -> str:
     """Return the SPARQL CONSTRUCT text for one page of products with optional filter."""
     return _build_page_sparql("sparql_products_path", limit, offset, filter_clause)

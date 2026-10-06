@@ -71,6 +71,7 @@ class TestOrganisationsEndpoint:
         assert len(data["@graph"]) == 2
         assert data["meta"]["local_identifier"].endswith("/api/v1/organisations?page=2&page_size=5")
         assert data["meta"]["next_page"]["local_identifier"].endswith("/api/v1/organisations?page=3&page_size=5")
+        assert data["meta"]["part_of"]["total_items"] == 42
 
         sparql = mock_query.call_args[0][0]
         assert "LIMIT 5" in sparql

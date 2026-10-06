@@ -107,6 +107,30 @@ class TestPersonsEndpoint:
         assert "LIMIT 5" in subquery and "OFFSET 10" in subquery
         assert "#FILTERS#" not in sparql and "#PAGINATION#" not in sparql
 
+    def test_total_items_counts_filtered_persons(self, mock_count):
+        with patch(PATCH_TARGET, return_value=EMPTY_TURTLE_DATA):
+            response = client.get("/api/v1/persons?filter=name:x&page=3&page_size=5")
+
+        assert response.json()["meta"]["part_of"]["total_items"] == 42
+        count_sparql = mock_count["persons"].call_args[0][0]
+        assert "SELECT (COUNT(DISTINCT ?s) AS ?total)" in count_sparql
+        assert "?s a foaf:Person" in count_sparql
+        assert 'FILTER(STR(?fv0) = "x")' in count_sparql
+        assert "LIMIT" not in count_sparql and "OFFSET" not in count_sparql
+        assert "PREFIX foaf:" in count_sparql
+
+    def test_next_page_only_when_more_items(self, mock_count):
+        mock_count["persons"].return_value = 10
+        with patch(PATCH_TARGET, return_value=EMPTY_TURTLE_DATA):
+            assert "next_page" in client.get("/api/v1/persons?page=1&page_size=5").json()["meta"]
+            assert "next_page" not in client.get("/api/v1/persons?page=2&page_size=5").json()["meta"]
+            assert "next_page" not in client.get("/api/v1/persons?page=3&page_size=5").json()["meta"]
+
+    def test_count_query_error(self, mock_count):
+        mock_count["persons"].side_effect = RuntimeError("boom")
+        with patch(PATCH_TARGET, return_value=EMPTY_TURTLE_DATA):
+            assert client.get("/api/v1/persons").status_code == 502
+
     @patch(PATCH_TARGET)
     def test_filter_value_is_escaped(self, mock_query):
         mock_query.return_value = EMPTY_TURTLE_DATA

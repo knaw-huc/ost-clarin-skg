@@ -95,6 +95,7 @@ class TestServicesEndpoint:
         assert data["@context"][3] == "https://w3id.org/skg-if/extension/srv/context/skg-if.json"
         assert len(data["@graph"]) == 2
         assert data["meta"]["local_identifier"].endswith("/api/v1/services?page=2&page_size=5")
+        assert data["meta"]["part_of"]["total_items"] == 42
 
         sparql = mock_query.call_args[0][0]
         subquery = sparql[sparql.index("SELECT DISTINCT ?s"):sparql.index("UNION")]

@@ -10,7 +10,7 @@ from src.ost_clairin_skg.infra import commons
 from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_EXT_SRV
 from src.ost_clairin_skg.infra.commons import DC, FOAF, SRV
 from src.ost_clairin_skg.infra.commons import LANG_CODE_PREFIX
-from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
+from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, count_triplestore
 
 router = APIRouter(prefix=API_PREFIX)
 
@@ -190,6 +190,7 @@ def get_services(
 
     try:
         turtle_data = query_triplestore(sparql)
+        total_items = count_triplestore(commons.build_count_sparql("sparql_services_path", filter_clause))
     except RuntimeError as exc:
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
@@ -220,17 +221,20 @@ def get_services(
         "meta": {
             "local_identifier": page_url(page),
             "entity_type": "search_result_page",
-            "next_page": {
-                "local_identifier": page_url(page + 1),
-                "entity_type": "search_result_page",
-            },
             "part_of": {
                 "local_identifier": page_url(None),
                 "entity_type": "search_result",
+                "total_items": total_items,
             },
         },
         "@graph": services,
     }
+
+    if offset + page_size < total_items:
+        response["meta"]["next_page"] = {
+            "local_identifier": page_url(page + 1),
+            "entity_type": "search_result_page",
+        }
 
     return JSONResponse(content=response, media_type="application/ld+json")
 
