@@ -1,7 +1,6 @@
 import json
 import logging
 from typing import Dict, Any, List, Optional
-import re
 import rdflib
 from rdflib import RDFS
 from fastapi import APIRouter, Request, Path, Query
