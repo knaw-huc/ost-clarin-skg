@@ -7,11 +7,9 @@ from fastapi.testclient import TestClient
 import json
 
 from src.ost_clairin_skg.main import app
-from src.ost_clairin_skg.api.v1.products import _rdf_graph_to_product, _build_skg_if_response
-
+from src.ost_clairin_skg.api.v1.products import rdf_graph_to_product, _build_skg_if_response
 
 client = TestClient(app)
-
 
 # Sample Turtle RDF data for testing
 SAMPLE_TURTLE_DATA = """
@@ -41,7 +39,7 @@ class TestRDFToProductTransformation:
 
     def test_rdf_graph_to_product_basic(self):
         """Test basic transformation from RDF to product dictionary."""
-        product = _rdf_graph_to_product(SAMPLE_TURTLE_DATA, "test-product-123")
+        product = rdf_graph_to_product(SAMPLE_TURTLE_DATA, "test-product-123")
 
         # Check basic fields
         assert product["local_identifier"] == "test-product-123"
@@ -66,7 +64,7 @@ class TestRDFToProductTransformation:
 
     def test_identifiers_extraction(self):
         """Test proper extraction and formatting of identifiers."""
-        product = _rdf_graph_to_product(SAMPLE_TURTLE_DATA, "test-id")
+        product = rdf_graph_to_product(SAMPLE_TURTLE_DATA, "test-id")
 
         identifiers = product["identifiers"]
 
@@ -93,7 +91,7 @@ class TestRDFToProductTransformation:
           a fabio:Work .
         """
 
-        product = _rdf_graph_to_product(minimal_turtle, "minimal-product")
+        product = rdf_graph_to_product(minimal_turtle, "minimal-product")
 
         # Required fields should be present
         assert product["local_identifier"] == "minimal-product"
@@ -114,7 +112,7 @@ class TestRDFToProductTransformation:
         @prefix fabio: <http://purl.org/spar/fabio/> .
         <http://example.com/product> a fabio:Work, fabio:{fabio_class} .
         """
-        assert _rdf_graph_to_product(turtle, "p")["product_type"] == expected
+        assert rdf_graph_to_product(turtle, "p")["product_type"] == expected
 
     def test_topics_extraction(self):
         """Topics are terms reached via bido:holdsBibliometricDataInTime/bido:withBibliometricData."""
@@ -128,14 +126,14 @@ class TestRDFToProductTransformation:
         _:bd2 a bido:BibliometricDataInTime ; bido:withBibliometricData <http://example.com/not-a-term> .
         <otf:otf___topic___tcof> a fabio:SubjectTerm ; skos:prefLabel "tcof" .
         """
-        product = _rdf_graph_to_product(turtle, "p")
+        product = rdf_graph_to_product(turtle, "p")
 
         assert product["topics"] == [{"term": {
             "local_identifier": "otf___topic___tcof",
             "entity_type": "topic",
             "labels": {"none": "tcof"},
         }}]
-        assert "topics" not in _rdf_graph_to_product(SAMPLE_TURTLE_DATA, "p")
+        assert "topics" not in rdf_graph_to_product(SAMPLE_TURTLE_DATA, "p")
 
     def test_manifestations_extraction(self):
         """Manifestation fields are read from the embodiment of the work's frbr:realization."""
@@ -156,7 +154,7 @@ class TestRDFToProductTransformation:
           dcat:accessService <otf:otf___ds___repo> .
         <otf:otf___ds___repo> a dcat:DataService ; foaf:name "Some Repository" .
         """
-        product = _rdf_graph_to_product(turtle, "p")
+        product = rdf_graph_to_product(turtle, "p")
 
         assert product["manifestations"] == [{
             "access_rights": {"status": "restricted", "description": "Academic/Restricted access"},
@@ -176,7 +174,7 @@ class TestRDFToProductTransformation:
         <http://example.com/product#expression> a fabio:Expression ;
           frbr:embodiment <http://example.com/product#manifestation> .
         """
-        assert "manifestations" not in _rdf_graph_to_product(turtle, "p")
+        assert "manifestations" not in rdf_graph_to_product(turtle, "p")
 
     def test_no_fabio_work_raises_error(self):
         """Test that missing fabio:Work raises appropriate error."""
@@ -187,7 +185,7 @@ class TestRDFToProductTransformation:
         """
 
         with pytest.raises(ValueError, match="No fabio:Work found"):
-            _rdf_graph_to_product(invalid_turtle, "invalid-product")
+            rdf_graph_to_product(invalid_turtle, "invalid-product")
 
 
 class TestSKGIFResponseBuilder:
@@ -505,7 +503,7 @@ class TestIdentifierHandling:
              silvio:hasLiteralValue "12345678" .
         """
 
-        product = _rdf_graph_to_product(turtle, "test")
+        product = rdf_graph_to_product(turtle, "test")
         identifiers = product["identifiers"]
 
         # All schemes should be lowercase short names
@@ -532,7 +530,7 @@ class TestIdentifierHandling:
         _:id2 datacite:usesIdentifierScheme datacite:doi .
         """
 
-        product = _rdf_graph_to_product(turtle, "test")
+        product = rdf_graph_to_product(turtle, "test")
         identifiers = product["identifiers"]
 
         # Should only include identifiers with values

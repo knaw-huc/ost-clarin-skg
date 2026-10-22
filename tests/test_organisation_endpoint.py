@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.ost_clairin_skg.main import app
-from src.ost_clairin_skg.api.v1.organizations import _rdf_graph_to_organisation, _rdf_graph_to_organisations
+from src.ost_clairin_skg.api.v1.organizations import rdf_graph_to_organisation, rdf_graph_to_organisations
 
 
 client = TestClient(app)
@@ -37,7 +37,7 @@ EMPTY_TURTLE_DATA = "@prefix foaf: <http://xmlns.com/foaf/0.1/> ."
 class TestRDFToOrganisationTransformation:
 
     def test_rdf_graph_to_organisations(self):
-        orgs = {o["local_identifier"]: o for o in _rdf_graph_to_organisations(SAMPLE_TURTLE_DATA)}
+        orgs = {o["local_identifier"]: o for o in rdf_graph_to_organisations(SAMPLE_TURTLE_DATA)}
 
         assert set(orgs) == {"otf___org___clarin_eric", "otf___org___vytautas_magnus_university"}
         clarin = orgs["otf___org___clarin_eric"]
@@ -54,7 +54,7 @@ class TestRDFToOrganisationTransformation:
         assert "identifiers" not in vmu
 
     def test_rdf_graph_to_organisation_uses_requested_id(self):
-        org = _rdf_graph_to_organisation(SAMPLE_TURTLE_DATA, "some-id")
+        org = rdf_graph_to_organisation(SAMPLE_TURTLE_DATA, "some-id")
         assert org["local_identifier"] == "some-id"
 
 

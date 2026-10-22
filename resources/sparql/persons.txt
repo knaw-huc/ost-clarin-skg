@@ -2,27 +2,63 @@ PREFIX datacite: <http://purl.org/spar/datacite/>
 PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
 PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
 PREFIX skg:      <https://w3id.org/skg-if/ontology/>
-
+PREFIX voidPlus: <https://lenticularlens.org/voidPlus/>
+PREFIX resource: <https://lenticularlens.org/voidPlus/resource/>
 
 CONSTRUCT {
-  ?s a skg:Agent, foaf:Person ;
-     datacite:hasIdentifier ?id ;
-     foaf:name ?n ;
-     foaf:givenName ?g ;
-     foaf:familyName ?f .
-  ?id datacite:usesIdentifierScheme ?scheme ;
-      silvio:hasLiteralValue ?pid .
+    ?s a skg:Agent, foaf:Person ;
+       datacite:hasIdentifier ?id ;
+       foaf:name ?n ;
+       foaf:givenName ?g ;
+       foaf:familyName ?f .
+
+    ?id datacite:usesIdentifierScheme ?scheme ;
+        silvio:hasLiteralValue ?pid .
 }
 WHERE {
-    # Select one page of distinct persons first, so LIMIT/OFFSET count persons rather than result rows
     {
         SELECT DISTINCT ?s WHERE {
-            ?s a foaf:Person .
+            {
+                {
+                    SELECT ?cluster
+                           (MIN(STR(?member)) AS ?firstMember)
+                    WHERE {
+                        ?cluster a voidPlus:Cluster ;
+                                 voidPlus:hasItem ?member .
+
+                        ?member a foaf:Person .
+
+                        FILTER NOT EXISTS {
+                            ?link voidPlus:hasClusterID ?cluster .
+
+                            FILTER NOT EXISTS {
+                                ?link voidPlus:hasValidation ?validation .
+                                ?validation voidPlus:hasValidationStatus
+                                            resource:Accepted .
+                            }
+                        }
+                    }
+                    GROUP BY ?cluster
+                }
+
+                BIND(IRI(?firstMember) AS ?s)
+            }
+            UNION
+            {
+                ?s a foaf:Person .
+
+                FILTER NOT EXISTS {
+                    ?anyCluster a voidPlus:Cluster ;
+                                voidPlus:hasItem ?s .
+                }
+            }
+
             #FILTERS#
         }
         ORDER BY ?s
         #PAGINATION#
     }
+
     OPTIONAL { ?s foaf:name ?n . }
     OPTIONAL { ?s foaf:givenName ?g . }
     OPTIONAL { ?s foaf:familyName ?f . }

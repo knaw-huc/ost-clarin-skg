@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
-from src.ost_clairin_skg.api.v1.organizations import _extract_organisation
+from src.ost_clairin_skg.api.v1.organizations import extract_organisation
 from src.ost_clairin_skg.infra import commons
 from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_EXT_SRV
 from src.ost_clairin_skg.infra.commons import DC, FOAF, SRV
@@ -14,7 +14,6 @@ from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, co
 
 router = APIRouter(prefix=API_PREFIX)
 
-# Organisation / venue classes -> SKG-IF srv extension types
 ORGANISATION_TYPES = {
     SRV.HostingOrganisation: "srv_hosting_organisation",
     SRV.ResearchInfrastructure: "srv_research_infrastructure",
@@ -29,7 +28,6 @@ _ORG_LINKS = {
     "srv_has_research_infrastructure": "srv:isPartOfResearchInfrastructure",
 }
 
-# filter key -> (predicate path with {v} as the value variable, match mode); see commons.build_filter_patterns
 SERVICE_FILTERS = {
     "name": ("foaf:name {v}", "exact"),
     "cf.search.name": ("foaf:name {v}", "contains"),
@@ -41,15 +39,15 @@ for _field, _link in _ORG_LINKS.items():
     SERVICE_FILTERS[f"{_field}.identifiers.scheme"] = (f"{_link}/datacite:hasIdentifier/datacite:usesIdentifierScheme {{v}}", "scheme")
 
 
-def _extract_linked_organisation(g: rdflib.Graph, org) -> Dict[str, Any]:
-    organisation = _extract_organisation(g, org, commons.strip_local_id_prefix(str(org)))
+def extract_linked_organisation(g: rdflib.Graph, org) -> Dict[str, Any]:
+    organisation = extract_organisation(g, org, commons.strip_local_id_prefix(str(org)))
     types = sorted({ORGANISATION_TYPES[t] for t in g.objects(org, rdflib.RDF.type) if t in ORGANISATION_TYPES})
     if types:
         organisation["types"] = types
     return organisation
 
 
-def _extract_venue(g: rdflib.Graph, venue) -> Dict[str, Any]:
+def extract_venue(g: rdflib.Graph, venue) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "local_identifier": commons.strip_local_id_prefix(str(venue)),
         "entity_type": "venue",
@@ -66,7 +64,7 @@ def _extract_venue(g: rdflib.Graph, venue) -> Dict[str, Any]:
     return result
 
 
-def _extract_service(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
+def extract_service(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
     service: Dict[str, Any] = {
         "local_identifier": local_identifier,
         "entity_type": "srv_service",
@@ -89,42 +87,41 @@ def _extract_service(g: rdflib.Graph, subject, local_identifier: str) -> Dict[st
         ("srv_has_research_infrastructure", SRV.isPartOfResearchInfrastructure),
         ("relevant_organisations", DC.relation),
     ):
-        organisations = [_extract_linked_organisation(g, o) for o in sorted(g.objects(subject, predicate))]
+        organisations = [
+            extract_linked_organisation(g, o) for o in sorted(g.objects(subject, predicate))
+        ]
         if organisations:
             service[field] = organisations
 
-    venues = [_extract_venue(g, v) for v in sorted(g.objects(subject, SRV.hasVenue))]
+    venues = [extract_venue(g, v) for v in sorted(g.objects(subject, SRV.hasVenue))]
     if venues:
         service["srv_venues"] = venues
 
     return service
 
-
-def _parse(turtle_data: str) -> rdflib.Graph:
+def parse(turtle_data: str) -> rdflib.Graph:
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
     return g
 
-
-def _rdf_graph_to_services(turtle_data: str) -> List[Dict[str, Any]]:
+def rdf_graph_to_services(turtle_data: str) -> List[Dict[str, Any]]:
     """Convert RDF turtle data to a list of SKG-IF services."""
-    g = _parse(turtle_data)
+    g = parse(turtle_data)
     return [
-        _extract_service(g, s, commons.strip_local_id_prefix(str(s)))
+        extract_service(g, s, commons.strip_local_id_prefix(str(s)))
         for s in g.subjects(rdflib.RDF.type, SRV.Service)
     ]
 
 
-def _rdf_graph_to_service(turtle_data: str, service_id: str) -> Optional[Dict[str, Any]]:
+def rdf_graph_to_service(turtle_data: str, service_id: str) -> Optional[Dict[str, Any]]:
     """Convert RDF turtle data to a single SKG-IF service, or None if no srv:Service is present."""
-    g = _parse(turtle_data)
+    g = parse(turtle_data)
     subject = next(g.subjects(rdflib.RDF.type, SRV.Service), None)
     if subject is None:
         return None
-    return _extract_service(g, subject, service_id)
+    return extract_service(g, subject, service_id)
 
-
-def _build_context(base_url: str) -> List[Any]:
+def build_context(base_url: str) -> List[Any]:
     return [
         SKG_IF_CONTEXT_ONTOLOGY,
         SKG_IF_CONTEXT_API,
@@ -195,7 +192,7 @@ def get_services(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        services = _rdf_graph_to_services(turtle_data) if turtle_data else []
+        services = rdf_graph_to_services(turtle_data) if turtle_data else []
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -217,7 +214,7 @@ def get_services(
         return f"{search_url}?{urlencode(params)}" if params else search_url
 
     response = {
-        "@context": _build_context(base_url),
+        "@context": build_context(base_url),
         "meta": {
             "local_identifier": page_url(page),
             "entity_type": "search_result_page",
@@ -265,7 +262,7 @@ def get_service(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        service = _rdf_graph_to_service(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
+        service = rdf_graph_to_service(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -278,6 +275,6 @@ def get_service(
 
     base_url = str(request.base_url).rstrip("/")
     return JSONResponse(
-        content={"@context": _build_context(base_url), "@graph": [service]},
+        content={"@context": build_context(base_url), "@graph": [service]},
         media_type="application/ld+json",
     )

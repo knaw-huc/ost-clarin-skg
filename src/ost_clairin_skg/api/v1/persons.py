@@ -11,8 +11,6 @@ from src.ost_clairin_skg.infra.commons import DATACITE, SILVIO, FOAF
 from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, count_triplestore
 router = APIRouter(prefix=API_PREFIX)
 
-# filter key -> (graph pattern with {v} as the value variable, match mode)
-# The pattern is prefixed with the subject ?s; identifier filters go through an intermediate node.
 PERSON_FILTERS = {
     "name": ("foaf:name {v}", "exact"),
     "given_name": ("foaf:givenName {v}", "exact"),
@@ -24,8 +22,7 @@ PERSON_FILTERS = {
     "identifiers.scheme": ("datacite:hasIdentifier/datacite:usesIdentifierScheme {v}", "scheme"),
 }
 
-
-def _extract_person(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
+def extract_person(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
     person: Dict[str, Any] = {
         "local_identifier": local_identifier,
         "entity_type": "person",
@@ -58,27 +55,25 @@ def _extract_person(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str
 
     return person
 
-
-def _parse(turtle_data: str) -> rdflib.Graph:
+def parse(turtle_data: str) -> rdflib.Graph:
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
     return g
 
-
-def _rdf_graph_to_persons(turtle_data: str) -> List[Dict[str, Any]]:
+def rdf_graph_to_persons(turtle_data: str) -> List[Dict[str, Any]]:
     """Convert RDF turtle data to a list of SKG-IF persons."""
-    g = _parse(turtle_data)
-    return [_extract_person(g, s, commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FOAF.Person)]
+    g = parse(turtle_data)
+    return [
+        extract_person(g, s, commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FOAF.Person)
+    ]
 
-
-def _rdf_graph_to_person(turtle_data: str, person_id: str) -> Optional[Dict[str, Any]]:
+def rdf_graph_to_person(turtle_data: str, person_id: str) -> Optional[Dict[str, Any]]:
     """Convert RDF turtle data to a single SKG-IF person, or None if no foaf:Person is present."""
-    g = _parse(turtle_data)
+    g = parse(turtle_data)
     subject = next(g.subjects(rdflib.RDF.type, FOAF.Person), None)
     if subject is None:
         return None
-    return _extract_person(g, subject, person_id)
-
+    return extract_person(g, subject, person_id)
 
 def _build_context(base_url: str) -> List[Any]:
     return [
@@ -148,7 +143,7 @@ def get_persons(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        persons = _rdf_graph_to_persons(turtle_data) if turtle_data else []
+        persons = rdf_graph_to_persons(turtle_data) if turtle_data else []
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -218,7 +213,7 @@ def get_person(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        person = _rdf_graph_to_person(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
+        person = rdf_graph_to_person(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(

@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.ost_clairin_skg.main import app
-from src.ost_clairin_skg.api.v1.persons import _rdf_graph_to_person, _rdf_graph_to_persons
+from src.ost_clairin_skg.api.v1.persons import rdf_graph_to_person, rdf_graph_to_persons
 
 
 client = TestClient(app)
@@ -38,7 +38,7 @@ EMPTY_TURTLE_DATA = "@prefix foaf: <http://xmlns.com/foaf/0.1/> ."
 class TestRDFToPersonTransformation:
 
     def test_rdf_graph_to_persons(self):
-        persons = {p["local_identifier"]: p for p in _rdf_graph_to_persons(SAMPLE_TURTLE_DATA)}
+        persons = {p["local_identifier"]: p for p in rdf_graph_to_persons(SAMPLE_TURTLE_DATA)}
 
         assert set(persons) == {"otf___person___josiah_carberry", "otf___person___alice_brown"}
         josiah = persons["otf___person___josiah_carberry"]
@@ -54,7 +54,7 @@ class TestRDFToPersonTransformation:
         assert "identifiers" not in alice
 
     def test_rdf_graph_to_person_uses_requested_id(self):
-        person = _rdf_graph_to_person(SAMPLE_TURTLE_DATA, "some-id")
+        person = rdf_graph_to_person(SAMPLE_TURTLE_DATA, "some-id")
         assert person["local_identifier"] == "some-id"
 
 

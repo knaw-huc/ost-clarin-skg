@@ -12,7 +12,6 @@ from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, co
 
 router = APIRouter(prefix=API_PREFIX)
 
-# filter key -> (predicate path with {v} as the value variable, match mode); see commons.build_filter_patterns
 ORGANISATION_FILTERS = {
     "name": ("foaf:name {v}", "exact"),
     "cf.search.name": ("foaf:name {v}", "contains"),
@@ -20,8 +19,7 @@ ORGANISATION_FILTERS = {
     "identifiers.scheme": ("datacite:hasIdentifier/datacite:usesIdentifierScheme {v}", "scheme"),
 }
 
-
-def _extract_organisation(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
+def extract_organisation(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
     organisation: Dict[str, Any] = {
         "local_identifier": local_identifier,
         "entity_type": "organisation",
@@ -61,26 +59,23 @@ def _extract_organisation(g: rdflib.Graph, subject, local_identifier: str) -> Di
     return organisation
 
 
-def _parse(turtle_data: str) -> rdflib.Graph:
+def parse(turtle_data: str) -> rdflib.Graph:
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
     return g
 
-
-def _rdf_graph_to_organisations(turtle_data: str) -> List[Dict[str, Any]]:
+def rdf_graph_to_organisations(turtle_data: str) -> List[Dict[str, Any]]:
     """Convert RDF turtle data to a list of SKG-IF organisations."""
-    g = _parse(turtle_data)
-    return [_extract_organisation(g, s, commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FOAF.Organization)]
+    g = parse(turtle_data)
+    return [extract_organisation(g, s, commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FOAF.Organization)]
 
-
-def _rdf_graph_to_organisation(turtle_data: str, organisation_id: str) -> Optional[Dict[str, Any]]:
+def rdf_graph_to_organisation(turtle_data: str, organisation_id: str) -> Optional[Dict[str, Any]]:
     """Convert RDF turtle data to a single SKG-IF organisation, or None if no foaf:Organization is present."""
-    g = _parse(turtle_data)
+    g = parse(turtle_data)
     subject = next(g.subjects(rdflib.RDF.type, FOAF.Organization), None)
     if subject is None:
         return None
-    return _extract_organisation(g, subject, organisation_id)
-
+    return extract_organisation(g, subject, organisation_id)
 
 def _build_context(base_url: str) -> List[Any]:
     return [
@@ -145,7 +140,7 @@ def get_organisations(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        organisations = _rdf_graph_to_organisations(turtle_data) if turtle_data else []
+        organisations = rdf_graph_to_organisations(turtle_data) if turtle_data else []
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -215,7 +210,7 @@ def get_organisation(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        organisation = _rdf_graph_to_organisation(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
+        organisation = rdf_graph_to_organisation(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
