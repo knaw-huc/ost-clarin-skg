@@ -1,6 +1,5 @@
 # New graph DB connector helpers
 import subprocess
-from typing import Optional
 
 from src.ost_clairin_skg.infra.commons import app_settings
 

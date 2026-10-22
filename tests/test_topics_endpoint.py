@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.ost_clairin_skg.main import app
-from src.ost_clairin_skg.api.v1.topics import _rdf_graph_to_topic, _rdf_graph_to_topics
+from src.ost_clairin_skg.api.v1.topics import rdf_graph_to_topic, rdf_graph_to_topics
 
 
 client = TestClient(app)
@@ -37,7 +37,7 @@ EMPTY_TURTLE_DATA = "@prefix fabio: <http://purl.org/spar/fabio/> ."
 class TestRDFToTopicTransformation:
 
     def test_rdf_graph_to_topics(self):
-        topics = {t["local_identifier"]: t for t in _rdf_graph_to_topics(SAMPLE_TURTLE_DATA)}
+        topics = {t["local_identifier"]: t for t in rdf_graph_to_topics(SAMPLE_TURTLE_DATA)}
 
         assert set(topics) == {"otf___topic___tcof", "otf___topic___solar"}
         tcof = topics["otf___topic___tcof"]
@@ -50,7 +50,7 @@ class TestRDFToTopicTransformation:
         assert solar["identifiers"] == [{"value": "Q12705", "scheme": "wikidata"}]
 
     def test_rdf_graph_to_topic_uses_requested_id(self):
-        topic = _rdf_graph_to_topic(SAMPLE_TURTLE_DATA, "some-id")
+        topic = rdf_graph_to_topic(SAMPLE_TURTLE_DATA, "some-id")
         assert topic["local_identifier"] == "some-id"
 
 

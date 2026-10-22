@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.ost_clairin_skg.main import app
-from src.ost_clairin_skg.api.v1.services import _rdf_graph_to_service, _rdf_graph_to_services
+from src.ost_clairin_skg.api.v1.services import rdf_graph_to_service, rdf_graph_to_services
 
 
 client = TestClient(app)
@@ -47,7 +47,7 @@ EMPTY_TURTLE_DATA = "@prefix srv: <https://w3id.org/skg-if/extension/srv/ontolog
 class TestRDFToServiceTransformation:
 
     def test_rdf_graph_to_services(self):
-        services = {s["local_identifier"]: s for s in _rdf_graph_to_services(SAMPLE_TURTLE_DATA)}
+        services = {s["local_identifier"]: s for s in rdf_graph_to_services(SAMPLE_TURTLE_DATA)}
 
         assert set(services) == {"service___tei2tcf", "service___bare"}
         tei = services["service___tei2tcf"]
@@ -79,7 +79,7 @@ class TestRDFToServiceTransformation:
         @prefix dc: <http://purl.org/dc/terms/> .
         <otf:service___x> a srv:Service ; dc:description "{code:en}A parser"@en .
         """
-        assert _rdf_graph_to_service(turtle, "x")["srv_descriptions"] == {"en": ["A parser"]}
+        assert rdf_graph_to_service(turtle, "x")["srv_descriptions"] == {"en": ["A parser"]}
 
 
 class TestServicesEndpoint:
