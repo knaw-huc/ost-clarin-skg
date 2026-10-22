@@ -3,6 +3,8 @@ import tomli
 import rdflib
 import re
 from dynaconf import Dynaconf
+from typing import Any, List, Optional, Dict
+from urllib.parse import urlencode
 
 build_date = os.environ.get("BUILD_DATE", "unknown")
 
@@ -324,3 +326,17 @@ def build_topic_sparql(filter_clause: str) -> str:
 def build_topics_sparql(limit: int = 10, offset: int = 0, filter_clause: str | None = None) -> str:
     """Return the SPARQL CONSTRUCT text for one page of topics with optional filter."""
     return _build_page_sparql("sparql_topics_path", limit, offset, filter_clause)
+
+# --- Response building helpers
+def build_context(base_url: str, contexts: Optional[List[str]] = None) -> List[Any]:
+    return [ SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API, {"@base": f"{base_url}/"}, ] +  contexts if contexts else []
+
+def build_page_url(page: Optional[int], page_size: int, fltr: Optional[str], search_url: str) -> str:
+    params: Dict[str, Any] = {}
+    if page is not None:
+        params["page"] = page
+    if page_size != 10:
+        params["page_size"] = page_size
+    if fltr:
+        params["filter"] = fltr
+    return f"{search_url}?{urlencode(params)}" if params else search_url

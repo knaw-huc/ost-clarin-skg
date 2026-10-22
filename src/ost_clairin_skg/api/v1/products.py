@@ -505,7 +505,6 @@ def get_products(
         )
 
     if not turtle_data:
-        # Return empty result set
         products = []
     else:
         try:
@@ -550,13 +549,7 @@ def get_products(
 
     # Build response with SKG-IF metadata
     response = {
-        "@context": [
-            SKG_IF_CONTEXT_ONTOLOGY,
-            SKG_IF_CONTEXT_API,
-            {
-                "@base": f"{base_url}/"
-            }
-        ],
+        "@context": commons.build_context(base_url),
         "meta": {
             "local_identifier": current_url,
             "entity_type": "search_result_page",

@@ -4,7 +4,6 @@ Test suite for the product endpoint and SKG-IF JSON-LD response format.
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-import json
 
 from src.ost_clairin_skg.main import app
 from src.ost_clairin_skg.api.v1.products import rdf_graph_to_product, _build_skg_if_response

@@ -2,7 +2,6 @@ import json
 import logging
 import rdflib
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlencode
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
 from src.ost_clairin_skg.infra import commons
@@ -197,24 +196,13 @@ def get_venues(
 
     base_url = str(request.base_url).rstrip("/")
     search_url = f"{base_url}{API_PREFIX}/venues"
-
-    def page_url(p: Optional[int]) -> str:
-        params: Dict[str, Any] = {}
-        if p is not None:
-            params["page"] = p
-        if page_size != 10:
-            params["page_size"] = page_size
-        if filter:
-            params["filter"] = filter
-        return f"{search_url}?{urlencode(params)}" if params else search_url
-
     response = {
-        "@context": _build_context(base_url),
+        "@context": commons.build_context(base_url),
         "meta": {
-            "local_identifier": page_url(page),
+            "local_identifier": commons.build_page_url(page, page_size, filter, search_url),
             "entity_type": "search_result_page",
             "part_of": {
-                "local_identifier": page_url(None),
+                "local_identifier": commons.build_page_url(None, page_size, filter, search_url),
                 "entity_type": "search_result",
                 "total_items": total_items,
             },
@@ -224,7 +212,7 @@ def get_venues(
 
     if offset + page_size < total_items:
         response["meta"]["next_page"] = {
-            "local_identifier": page_url(page + 1),
+            "local_identifier": commons.build_page_url(page + 1, page_size, filter, search_url),
             "entity_type": "search_result_page",
         }
 
