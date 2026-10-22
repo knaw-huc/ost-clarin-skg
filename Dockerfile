@@ -1,4 +1,4 @@
-FROM python:3.1.8-bookworm
+FROM python:3.12.8-bookworm
 LABEL authors="Eko Indarto"
 
 ARG BUILD_DATE
