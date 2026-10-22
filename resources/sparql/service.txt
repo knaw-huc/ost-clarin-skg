@@ -1,0 +1,54 @@
+PREFIX datacite: <http://purl.org/spar/datacite/>
+PREFIX dc:       <http://purl.org/dc/terms/>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX srv:      <https://w3id.org/skg-if/extension/srv/ontology/>
+
+CONSTRUCT {
+  ?s a srv:Service ;
+     foaf:name ?n ;
+     dc:description ?d ;
+     srv:hasHostingOrganisation ?ho ;
+     srv:isPartOfResearchInfrastructure ?ri ;
+     dc:relation ?rel ;
+     srv:hasVenue ?v .
+  ?org a ?otype ;
+       foaf:name ?on ;
+       foaf:homepage ?oh ;
+       datacite:hasIdentifier ?oid .
+  ?oid datacite:usesIdentifierScheme ?oscheme ;
+       silvio:hasLiteralValue ?opid .
+  ?v a ?vtype ;
+     foaf:name ?vn ;
+     foaf:homepage ?vh .
+}
+WHERE {
+    ?s a srv:Service .
+    # One UNION branch per property, so multi-valued properties don't multiply each other
+    {
+        ?s foaf:name ?n .
+    } UNION {
+        ?s dc:description ?d .
+    } UNION {
+        ?s srv:hasHostingOrganisation ?ho .
+    } UNION {
+        ?s srv:isPartOfResearchInfrastructure ?ri .
+    } UNION {
+        ?s dc:relation ?rel .
+    } UNION {
+        ?s srv:hasVenue ?v .
+        ?v a ?vtype .
+        OPTIONAL { ?v foaf:name ?vn . }
+        OPTIONAL { ?v foaf:homepage ?vh . }
+    } UNION {
+        ?s srv:hasHostingOrganisation|srv:isPartOfResearchInfrastructure|dc:relation ?org .
+        ?org a ?otype .
+        OPTIONAL { ?org foaf:name ?on . }
+        OPTIONAL { ?org foaf:homepage ?oh . }
+        OPTIONAL {
+            ?org datacite:hasIdentifier ?oid .
+            OPTIONAL { ?oid datacite:usesIdentifierScheme ?oscheme . }
+            OPTIONAL { ?oid silvio:hasLiteralValue ?opid . }
+        }
+    }
+}
