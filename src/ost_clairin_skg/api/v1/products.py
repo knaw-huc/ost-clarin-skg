@@ -317,7 +317,7 @@ def get_products(
     page: int = Query(1, ge=1, description="Page number (1-based)"),
     limit: int = Query(10, ge=1, le=100, description="Number of items per page"),
     page_size: Optional[int] = Query(None, ge=1, le=100, description="Alias for `limit` (page_size will override `limit` if provided)"),
-    filter: Optional[str] = Query(None, description="Search filter. Format: comma separated name:value pairs", regex=r'^(,?.+:.+)*$')
+    filter: Optional[str] = Query(None, description="Search filter. Format: comma separated name:value pairs", pattern=r'^(,?.+:.+)*$')
 ):
     """List products with pagination and optional filtering.
 

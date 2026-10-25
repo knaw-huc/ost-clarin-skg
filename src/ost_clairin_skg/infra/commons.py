@@ -308,6 +308,16 @@ def build_venues_sparql(limit: int = 10, offset: int = 0, filter_clause: str | N
     return _build_page_sparql("sparql_venues_path", limit, offset, filter_clause)
 
 
+# --- SPARQL datasource endpoint ---
+def build_datasource_sparql(filter_clause: str) -> str:
+    """Return the SPARQL CONSTRUCT text for a single data source, inserting filter_clause."""
+    return _load_sparql_with_filter("sparql_datasource_path", filter_clause)
+
+def build_datasources_sparql(limit: int = 10, offset: int = 0, filter_clause: str | None = None) -> str:
+    """Return the SPARQL CONSTRUCT text for one page of data sources with optional filter."""
+    return _build_page_sparql("sparql_datasources_path", limit, offset, filter_clause)
+
+
 # --- SPARQL service endpoint (SKG-IF srv extension) ---
 def build_service_sparql(filter_clause: str) -> str:
     """Return the SPARQL CONSTRUCT text for a single service, inserting filter_clause."""
@@ -329,7 +339,7 @@ def build_topics_sparql(limit: int = 10, offset: int = 0, filter_clause: str | N
 
 # --- Response building helpers
 def build_context(base_url: str, contexts: Optional[List[str]] = None) -> List[Any]:
-    return [ SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API, {"@base": f"{base_url}/"}, ] +  contexts if contexts else []
+    return [ SKG_IF_CONTEXT_ONTOLOGY, SKG_IF_CONTEXT_API, {"@base": f"{base_url}/"}, ] + (contexts or [])
 
 def build_page_url(page: Optional[int], page_size: int, fltr: Optional[str], search_url: str) -> str:
     params: Dict[str, Any] = {}
@@ -340,3 +350,26 @@ def build_page_url(page: Optional[int], page_size: int, fltr: Optional[str], sea
     if fltr:
         params["filter"] = fltr
     return f"{search_url}?{urlencode(params)}" if params else search_url
+
+def build_json_response(base_url: str, page: int, page_size: int, filter: str, totalitcontexts: Optional[List[str]] = None) -> List[Any]:
+    base_url = str(request.base_url).rstrip("/")
+    search_url = f"{base_url}{API_PREFIX}/persons"
+    response = {
+        "@context": build_context(base_url),
+        "meta": {
+            "local_identifier": build_page_url(page, page_size, filter, search_url),
+            "entity_type": "search_result_page",
+            "part_of": {
+                "local_identifier": build_page_url(None, page_size, filter, search_url),
+                "entity_type": "search_result",
+                "total_items": total_items,
+            },
+        },
+        "@graph": persons,
+    }
+
+    if offset + page_size < total_items:
+        response["meta"]["next_page"] = {
+            "local_identifier": commons.build_page_url(page + 1, page_size, filter, search_url),
+            "entity_type": "search_result_page",
+        }
