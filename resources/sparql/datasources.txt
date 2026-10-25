@@ -1,0 +1,35 @@
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX fabio:    <http://purl.org/spar/fabio/>
+PREFIX frbr:     <http://purl.org/vocab/frbr/core#>
+PREFIX dcat:     <http://www.w3.org/ns/dcat#>
+
+CONSTRUCT {
+  ?s a ?type ;
+     foaf:name ?n ;
+     dcat:servesDataset ?w .
+  ?w a ?wtype .
+}
+WHERE {
+    # Select one page of distinct data sources first, so LIMIT/OFFSET count data sources rather than result rows
+    {
+        SELECT DISTINCT ?s WHERE {
+            ?s a dcat:DataService .
+            #FILTERS#
+        }
+        ORDER BY ?s
+        #PAGINATION#
+    }
+    {
+        ?s a ?type .
+    } UNION {
+        ?s foaf:name ?n .
+    } UNION {
+        # Products hosted by the data source, typed only by the classes that determine research_product_types
+        ?w frbr:realization/frbr:embodiment/dcat:accessService ?s ;
+           a ?wtype .
+        VALUES ?wtype {
+            fabio:Dataset fabio:Software fabio:Article fabio:JournalArticle fabio:Book
+            fabio:BookChapter fabio:ConferencePaper fabio:Thesis fabio:Report
+        }
+    }
+}
