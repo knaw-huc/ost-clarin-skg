@@ -35,6 +35,13 @@ def _product_type(g: rdflib.Graph, subject) -> str:
             return product_type
     return "other"
 
+def _product_type_filter(product_type: str) -> str:
+    """SPARQL pattern restricting ?s to works of the given SKG-IF product_type."""
+    if product_type == "other":
+        all_classes = ", ".join(f"<{c}>" for classes in PRODUCT_TYPE_CLASSES.values() for c in classes)
+        return f"FILTER NOT EXISTS {{ ?s a ?ftype . FILTER(?ftype IN ({all_classes})) }} ."
+    classes = ", ".join(f"<{c}>" for c in PRODUCT_TYPE_CLASSES[product_type])
+    return f"FILTER EXISTS {{ ?s a ?ftype . FILTER(?ftype IN ({classes})) }} ."
 
 def _topics(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
     """SKG-IF topics of a product: terms linked via bido:holdsBibliometricDataInTime/bido:withBibliometricData."""
@@ -45,7 +52,6 @@ def _topics(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
                 topics.append({"term": extract_topic(g, term, commons.strip_local_id_prefix(str(term)))})
     return topics
 
-
 # SKG-IF access_rights.status for the pso statuses of a manifestation
 ACCESS_RIGHTS_STATUS: Dict[rdflib.URIRef, str] = {
     PSO["open-access"]: "open",
@@ -54,7 +60,6 @@ ACCESS_RIGHTS_STATUS: Dict[rdflib.URIRef, str] = {
     PSO["embargoed"]: "embargoed",
     PSO["unpublished"]: "unavailable",
 }
-
 
 def _manifestations(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
     """SKG-IF manifestations of a product: one per fabio:Expression linked via frbr:realization.
@@ -94,20 +99,8 @@ def _manifestations(g: rdflib.Graph, subject) -> List[Dict[str, Any]]:
             manifestations.append(manifestation)
     return manifestations
 
-
-def _product_type_filter(product_type: str) -> str:
-    """SPARQL pattern restricting ?s to works of the given SKG-IF product_type."""
-    if product_type == "other":
-        all_classes = ", ".join(f"<{c}>" for classes in PRODUCT_TYPE_CLASSES.values() for c in classes)
-        return f"FILTER NOT EXISTS {{ ?s a ?ftype . FILTER(?ftype IN ({all_classes})) }} ."
-    classes = ", ".join(f"<{c}>" for c in PRODUCT_TYPE_CLASSES[product_type])
-    return f"FILTER EXISTS {{ ?s a ?ftype . FILTER(?ftype IN ({classes})) }} ."
-
-
 # --- helpers: keep RDF->JSON-LD and context selection here ---
-
-
-def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
+def rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
     """Convert RDF turtle data to SKG-IF product JSON-LD format."""
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
@@ -227,7 +220,7 @@ def get_product(id: str = Path(..., description="Product identifier (local ID or
     try:
         # Transform RDF to SKG-IF product format
         try:
-            product_data = _rdf_graph_to_product(turtle_data, commons.strip_local_id_prefix(id))
+            product_data = rdf_graph_to_product(turtle_data, commons.strip_local_id_prefix(id))
         except ValueError:
             # GraphDB returns only prefix declarations when the CONSTRUCT matches nothing
             return JSONResponse(status_code=404, content={"detail": "Product not found"})
@@ -409,7 +402,7 @@ def get_products(
                 unsupported.append(name)
                 continue
 
-            if name in iri_filters and commons._is_uri(value) and not commons.is_valid_iri(value):
+            if name in iri_filters and commons.is_uri(value) and not commons.is_valid_iri(value):
                 invalid_iris.append(value)
                 continue
 
@@ -512,7 +505,6 @@ def get_products(
         )
 
     if not turtle_data:
-        # Return empty result set
         products = []
     else:
         try:
@@ -557,13 +549,7 @@ def get_products(
 
     # Build response with SKG-IF metadata
     response = {
-        "@context": [
-            SKG_IF_CONTEXT_ONTOLOGY,
-            SKG_IF_CONTEXT_API,
-            {
-                "@base": f"{base_url}/"
-            }
-        ],
+        "@context": commons.build_context(base_url),
         "meta": {
             "local_identifier": current_url,
             "entity_type": "search_result_page",

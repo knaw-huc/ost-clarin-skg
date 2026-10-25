@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-LIST_ENDPOINT_MODULES = ["products", "persons", "organizations", "services", "topics"]
+LIST_ENDPOINT_MODULES = ["products", "persons", "organizations", "grants", "venues", "services", "topics"]
 
 @pytest.fixture(autouse=True)
 def mock_count():

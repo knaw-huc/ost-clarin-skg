@@ -2,7 +2,6 @@ import json
 import logging
 import rdflib
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlencode
 from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
 from src.ost_clairin_skg.infra import commons
@@ -12,14 +11,12 @@ from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, co
 
 router = APIRouter(prefix=API_PREFIX)
 
-# filter key -> (predicate path with {v} as the value variable, match mode); see commons.build_filter_patterns
 TOPIC_FILTERS = {
     "identifiers.scheme": ("datacite:hasIdentifier/datacite:usesIdentifierScheme {v}", "scheme"),
     "identifiers.value": ("datacite:hasIdentifier/silvio:hasLiteralValue {v}", "exact"),
     "cf.search.labels": ("skos:prefLabel {v}", "contains"),
     "cf.search.language": ("skos:prefLabel {v}", "lang"),
 }
-
 
 def extract_topic(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
     """Convert a fabio:SubjectTerm to an SKG-IF topic; also used for the topics of a product."""
@@ -58,29 +55,27 @@ def extract_topic(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, 
 
     return topic
 
-
-def _parse(turtle_data: str) -> rdflib.Graph:
+def parse(turtle_data: str) -> rdflib.Graph:
     g = rdflib.Graph()
     g.parse(data=turtle_data, format="turtle")
     return g
 
-
-def _rdf_graph_to_topics(turtle_data: str) -> List[Dict[str, Any]]:
+def rdf_graph_to_topics(turtle_data: str) -> List[Dict[str, Any]]:
     """Convert RDF turtle data to a list of SKG-IF topics."""
-    g = _parse(turtle_data)
-    return [extract_topic(g, s, commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FABIO.SubjectTerm)]
+    g = parse(turtle_data)
+    return [
+        extract_topic(g, s, commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FABIO.SubjectTerm)
+    ]
 
-
-def _rdf_graph_to_topic(turtle_data: str, topic_id: str) -> Optional[Dict[str, Any]]:
+def rdf_graph_to_topic(turtle_data: str, topic_id: str) -> Optional[Dict[str, Any]]:
     """Convert RDF turtle data to a single SKG-IF topic, or None if no fabio:SubjectTerm is present."""
-    g = _parse(turtle_data)
+    g = parse(turtle_data)
     subject = next(g.subjects(rdflib.RDF.type, FABIO.SubjectTerm), None)
     if subject is None:
         return None
     return extract_topic(g, subject, topic_id)
 
-
-def _build_context(base_url: str) -> List[Any]:
+def build_context(base_url: str) -> List[Any]:
     return [
         SKG_IF_CONTEXT_ONTOLOGY,
         SKG_IF_CONTEXT_API,
@@ -144,7 +139,7 @@ def get_topics(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        topics = _rdf_graph_to_topics(turtle_data) if turtle_data else []
+        topics = rdf_graph_to_topics(turtle_data) if turtle_data else []
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -154,24 +149,13 @@ def get_topics(
 
     base_url = str(request.base_url).rstrip("/")
     search_url = f"{base_url}{API_PREFIX}/topics"
-
-    def page_url(p: Optional[int]) -> str:
-        params: Dict[str, Any] = {}
-        if p is not None:
-            params["page"] = p
-        if page_size != 10:
-            params["page_size"] = page_size
-        if filter:
-            params["filter"] = filter
-        return f"{search_url}?{urlencode(params)}" if params else search_url
-
     response = {
-        "@context": _build_context(base_url),
+        "@context": commons.build_context(base_url),
         "meta": {
-            "local_identifier": page_url(page),
+            "local_identifier": commons.build_page_url(page, page_size, filter, search_url),
             "entity_type": "search_result_page",
             "part_of": {
-                "local_identifier": page_url(None),
+                "local_identifier": commons.build_page_url(page, page_size, filter, search_url),
                 "entity_type": "search_result",
                 "total_items": total_items,
             },
@@ -181,7 +165,7 @@ def get_topics(
 
     if offset + page_size < total_items:
         response["meta"]["next_page"] = {
-            "local_identifier": page_url(page + 1),
+            "local_identifier": commons.build_page_url(page + 1, page_size, filter, search_url),
             "entity_type": "search_result_page",
         }
 
@@ -214,7 +198,7 @@ def get_topic(
         return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
     try:
-        topic = _rdf_graph_to_topic(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
+        topic = rdf_graph_to_topic(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
     except Exception as exc:
         logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
@@ -227,6 +211,6 @@ def get_topic(
 
     base_url = str(request.base_url).rstrip("/")
     return JSONResponse(
-        content={"@context": _build_context(base_url), "@graph": [topic]},
+        content={"@context": build_context(base_url), "@graph": [topic]},
         media_type="application/ld+json",
     )
