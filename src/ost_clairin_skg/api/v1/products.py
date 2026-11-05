@@ -11,7 +11,7 @@ from src.ost_clairin_skg.infra.commons import app_settings, API_PREFIX, SKG_IF_C
 from src.ost_clairin_skg.infra.commons import DATACITE, DC, SILVIO, FABIO, BIDO, RDF, FRBR, PSO, DCAT, FOAF
 from src.ost_clairin_skg.infra.commons import LANG_CODE_PREFIX
 from src.ost_clairin_skg.api.v1.topics import extract_topic
-from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, count_triplestore
+from src.ost_clairin_skg.services.triplestore import query_triplestore, count_triplestore
 
 USER = app_settings.USER
 PASS = app_settings.PASS

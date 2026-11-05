@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from src.ost_clairin_skg.infra.commons import API_PREFIX
-from src.ost_clairin_skg.services.graphdb_connector import query_triplestore
+from src.ost_clairin_skg.services.triplestore import query_triplestore
 
 router = APIRouter(prefix=API_PREFIX)
 
