@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.ost_clairin_skg.infra import commons
 from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_ONTOLOGY
 from src.ost_clairin_skg.infra.commons import DATACITE, SILVIO, FOAF, DC, FRAPO, TI, LANG_CODE_PREFIX
-from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, count_triplestore
+from src.ost_clairin_skg.services.triplestore import query_triplestore, count_triplestore
 
 router = APIRouter(prefix=API_PREFIX)
 
