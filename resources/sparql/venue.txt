@@ -1,0 +1,31 @@
+PREFIX datacite: <http://purl.org/spar/datacite/>
+PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX fabio:    <http://purl.org/spar/fabio/>
+PREFIX frapo:    <http://purl.org/cerif/frapo/>
+PREFIX prism:    <http://prismstandard.org/namespaces/basic/2.0/>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+
+CONSTRUCT {
+  ?s a ?type ;
+     datacite:hasIdentifier ?id ;
+     foaf:name ?n ;
+     frapo:hasAcronym ?acronym ;
+     prism:seriesTitle ?series ;
+     dcterms:created ?created .
+  ?id datacite:usesIdentifierScheme ?scheme ;
+      silvio:hasLiteralValue ?pid .
+}
+WHERE {
+    ?s a fabio:ExpressionCollection ;
+       a ?type .
+    OPTIONAL { ?s foaf:name ?n . }
+    OPTIONAL { ?s frapo:hasAcronym ?acronym . }
+    OPTIONAL { ?s prism:seriesTitle ?series . }
+    OPTIONAL { ?s dcterms:created ?created . }
+    OPTIONAL {
+        ?s datacite:hasIdentifier ?id .
+        OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
+        OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
+    }
+}

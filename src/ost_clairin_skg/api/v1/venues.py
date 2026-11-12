@@ -1,121 +1,127 @@
+import json
 import logging
-import math
-from typing import Any, Dict, List, Optional, Tuple
-
-from fastapi import APIRouter, HTTPException, Path, Query
+import rdflib
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import JSONResponse
-
-from src.ost_clairin_skg.infra.commons import API_PREFIX, app_settings
+from src.ost_clairin_skg.infra import commons
+from src.ost_clairin_skg.infra.commons import API_PREFIX, SKG_IF_CONTEXT_API, SKG_IF_CONTEXT_ONTOLOGY
+from src.ost_clairin_skg.infra.commons import DATACITE, SILVIO, FOAF, DC, FABIO, FRAPO, PRISM
+from src.ost_clairin_skg.services.graphdb_connector import query_triplestore, count_triplestore
 
 router = APIRouter(prefix=API_PREFIX)
 
-SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
-SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
-BASE_URL = app_settings.get("base_url", "https://w3id.org/skg-if/sandbox/acme/")
-
-# Placeholder data until GraphDB-backed retrieval is implemented.
-VENUES_DATA: List[Dict[str, Any]] = [
-    {
-        "local_identifier": "venue-1-jp",
-        "entity_type": "venue",
-        "identifiers": [{"scheme": "issn", "value": "0264-3561"}],
-        "name": "Journal of Psychoceramics",
-        "acronym": "JPC",
-        "type": "journal",
-    },
-    {
-        "local_identifier": "venue-2-sd",
-        "entity_type": "venue",
-        "identifiers": [{"scheme": "issn", "value": "2052-4463"}],
-        "name": "Scientific Data",
-        "acronym": "Sci Data",
-        "type": "journal",
-    },
-    {
-        "local_identifier": "venue-3-arxiv",
-        "entity_type": "venue",
-        "identifiers": [],
-        "name": "arXiv",
-        "acronym": "arXiv",
-        "type": "repository",
-    },
-]
-
-SUPPORTED_FILTERS = {
-    "acronym",
-    "type",
-    "identifiers.scheme",
-    "identifiers.value",
-    "name",
-    "cf.search.name",
+VENUE_FILTERS = {
+    "name": ("foaf:name {v}", "exact"),
+    "cf.search.name": ("foaf:name {v}", "contains"),
+    "acronym": ("frapo:hasAcronym {v}", "exact"),
+    "identifiers.id": ("datacite:hasIdentifier/silvio:hasLiteralValue {v}", "exact"),
+    "identifiers.scheme": ("datacite:hasIdentifier/datacite:usesIdentifierScheme {v}", "scheme"),
 }
+VENUE_TYPES = {
+    "journal": FABIO.Journal,
+    "conference": FABIO.ConferenceProceedings,
+    "book": FABIO.Book,
+    "repository": FABIO.Repository,
+    "other": FABIO.Work,
+}
+UNKNOWN_VENUE_TYPE = "unknown"
+
+def type_filter_clause(venue_type: str) -> Optional[str]:
+    """Return the SPARQL pattern restricting ?s to the given SKG-IF venue type, or None if the type is invalid."""
+    venue_type = venue_type.strip().lower()
+    if venue_type in VENUE_TYPES:
+        return f"?s a <{VENUE_TYPES[venue_type]}> ."
+    if venue_type == UNKNOWN_VENUE_TYPE:
+        classes = " ".join(f"<{c}>" for c in VENUE_TYPES.values())
+        return f"FILTER NOT EXISTS {{ ?s a ?ft . VALUES ?ft {{ {classes} }} }} ."
+    return None
 
 
-def _build_context() -> List[Any]:
+def extract_venue(g: rdflib.Graph, subject, local_identifier: str) -> Dict[str, Any]:
+    venue: Dict[str, Any] = {
+        "local_identifier": local_identifier,
+        "entity_type": "venue",
+    }
+
+    identifiers: list = []
+    for id_node in g.objects(subject, DATACITE.hasIdentifier):
+        id_obj: Dict[str, Any] = {"value": None, "scheme": None}
+
+        for literal_val in g.objects(id_node, SILVIO.hasLiteralValue):
+            id_obj["value"] = str(literal_val)
+
+        for scheme in g.objects(id_node, DATACITE.usesIdentifierScheme):
+            scheme_str = str(scheme)
+            if "#" in scheme_str:
+                id_obj["scheme"] = scheme_str.split("#")[-1].lower()
+            else:
+                id_obj["scheme"] = scheme_str.split("/")[-1].lower()
+
+        if id_obj["value"]:
+            identifiers.append(id_obj)
+
+    if identifiers:
+        venue["identifiers"] = identifiers
+
+    names = sorted(str(n) for n in g.objects(subject, FOAF.name))
+    if names:
+        venue["name"] = names[0]
+
+    types = set(g.objects(subject, rdflib.RDF.type))
+    venue["type"] = next((t for t, cls in VENUE_TYPES.items() if cls in types), UNKNOWN_VENUE_TYPE)
+
+    for key, predicate in (
+        ("acronym", FRAPO.hasAcronym),
+        ("series", PRISM.seriesTitle),
+        ("creation_date", DC.created),
+    ):
+        value = g.value(subject, predicate)
+        if value is not None:
+            venue[key] = str(value)
+
+    return venue
+
+def parse_graph_data(turtle_data: str) -> rdflib.Graph:
+    g = rdflib.Graph()
+    g.parse(data=turtle_data, format="turtle")
+    return g
+
+def rdf_graph_to_venues(turtle_data: str) -> List[Dict[str, Any]]:
+    """Convert RDF turtle data to a list of SKG-IF venues."""
+    g = parse_graph_data(turtle_data)
+    return [
+        extract_venue(g,
+                      s,
+                      commons.strip_local_id_prefix(str(s))) for s in g.subjects(rdflib.RDF.type, FABIO.ExpressionCollection)
+    ]
+
+def rdf_graph_to_venue(turtle_data: str, venue_id: str) -> Optional[Dict[str, Any]]:
+    """Convert RDF turtle data to a single SKG-IF venue, or None if no fabio:ExpressionCollection is present."""
+    g = parse_graph_data(turtle_data)
+    subject = next(g.subjects(rdflib.RDF.type, FABIO.ExpressionCollection), None)
+    if subject is None:
+        return None
+    return extract_venue(g, subject, venue_id)
+
+def _build_context(base_url: str) -> List[Any]:
     return [
         SKG_IF_CONTEXT_ONTOLOGY,
         SKG_IF_CONTEXT_API,
-        {"@base": BASE_URL},
+        {"@base": f"{base_url}/"},
     ]
 
 
-def _api_url(path: str) -> str:
-    base = BASE_URL.rstrip("/")
-    return f"{base}{API_PREFIX}{path}"
-
-
-def _page_url(query_base: str, filter_fragment: Optional[str], page: int) -> str:
-    params = [p for p in [filter_fragment, f"page={page}"] if p]
-    return f"{query_base}?{'&'.join(params)}"
-
-
-def _parse_filters(filter_value: Optional[str]) -> List[Tuple[str, str]]:
-    if not filter_value:
-        return []
-    filters: List[Tuple[str, str]] = []
-    for item in filter_value.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        if ":" not in item:
-            raise HTTPException(status_code=422, detail=f"Invalid filter element '{item}'. Expected key:value")
-        key, value = item.split(":", 1)
-        key, value = key.strip(), value.strip()
-        if not key or not value:
-            raise HTTPException(status_code=422, detail=f"Invalid filter element '{item}'. Expected key:value")
-        if key not in SUPPORTED_FILTERS:
-            raise HTTPException(status_code=422, detail=f"Unsupported filter '{key}'")
-        filters.append((key, value))
-    return filters
-
-
-def _matches_filter(venue: Dict[str, Any], key: str, value: str) -> bool:
-    if key == "acronym":
-        return venue.get("acronym") == value
-    if key == "type":
-        return venue.get("type") == value
-    if key == "name":
-        return venue.get("name") == value
-    if key == "identifiers.scheme":
-        return any(i.get("scheme") == value for i in venue.get("identifiers", []))
-    if key == "identifiers.value":
-        return any(i.get("value") == value for i in venue.get("identifiers", []))
-    if key == "cf.search.name":
-        return value.lower() in (venue.get("name") or "").lower()
-    return False
-
-
 @router.get("/venues", tags=["Venue"])
-async def get_venues(
-    page: int = Query(1, ge=1, description="Page number"),
+def get_venues(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
     page_size: int = Query(10, ge=1, le=100, description="Items per page"),
     filter: Optional[str] = Query(
         None,
         description=(
-            "Comma-separated filter_name:filter_value elements. "
-            "Attribute filters (exact match): acronym, type, name, identifiers.scheme, identifiers.value. "
-            "Convenience filters: cf.search.name. "
-            "Examples: type:journal | cf.search.name:Psychoceramics | acronym:JPC,type:journal"
+            "Comma separated filter_name:filter_value elements. "
+            "Supported keys: name, cf.search.name, acronym, type, identifiers.id, identifiers.scheme"
         ),
     ),
 ) -> JSONResponse:
@@ -124,99 +130,98 @@ async def get_venues(
     Returns a paginated JSON-LD response following the SKG-IF specification. Each item in
     `@graph` is an `entity_type: venue` object.
 
-    **Filtering** — supply comma-separated `name:value` pairs.  
+    **Filtering** — supply comma-separated `name:value` pairs.
     Supported filter keys:
 
     | Key | Description |
     |-----|-------------|
+    | `name` | Exact match on any name |
+    | `cf.search.name` | Case-insensitive substring match on any name |
     | `acronym` | Exact match on acronym |
-    | `type` | Exact match on venue type (e.g. `journal`, `conference`) |
-    | `name` | Exact match on venue name |
-    | `identifiers.scheme` | Exact match on identifier scheme (e.g. `issn`) |
-    | `identifiers.value` | Exact match on identifier value |
-    | `cf.search.name` | Case-insensitive substring match on name |
+    | `type` | Venue type: `journal`, `conference`, `book`, `repository`, `other` or `unknown` |
+    | `identifiers.id` | Exact match on any identifier value |
+    | `identifiers.scheme` | Identifier scheme (e.g. `issn`), case-insensitive |
 
     **Responses**
     - `200` — JSON-LD list (may be empty)
-    - `502` — backend error
+    - `422` — unsupported filter key or venue type supplied
+    - `502` — triplestore unreachable or returned unexpected data
     """
-    logging.info(f"Getting venues - page={page}, page_size={page_size}, filter={filter}")
+    logging.debug("Get venues endpoint called with page=%d, page_size=%d, filter=%s", page, page_size, filter)
 
-    parsed_filters = _parse_filters(filter)
+    filter_clause = None
+    if filter:
+        # `type` maps a value to a class rather than matching a literal, so it is handled here
+        type_clauses: List[str] = []
+        other_parts: List[str] = []
+        for part in (p.strip() for p in filter.split(",")):
+            name, _, value = part.partition(":")
+            if name.strip() != "type":
+                other_parts.append(part)
+                continue
+            clause = type_filter_clause(value)
+            if clause is None:
+                return JSONResponse(status_code=422, content={
+                    "detail": "Unsupported venue type requested",
+                    "supported_types": [*VENUE_TYPES, UNKNOWN_VENUE_TYPE],
+                })
+            type_clauses.append(clause)
 
-    filtered = VENUES_DATA
-    for key, value in parsed_filters:
-        filtered = [venue for venue in filtered if _matches_filter(venue, key, value)]
+        filter_clause, unsupported = commons.build_filter_patterns(",".join(other_parts), VENUE_FILTERS)
+        if unsupported:
+            return JSONResponse(status_code=422, content={
+                "detail": "Unsupported filter(s) requested",
+                "unsupported_filters": unsupported,
+            })
+        filter_clause = "\n    ".join(c for c in [filter_clause, *type_clauses] if c) or None
 
-    total_items = len(filtered)
-    total_pages = max(1, math.ceil(total_items / page_size))
-    start = (page - 1) * page_size
-    end = start + page_size
-    page_items = filtered[start:end]
+    offset = (page - 1) * page_size
+    sparql = commons.build_venues_sparql(limit=page_size, offset=offset, filter_clause=filter_clause)
+    logging.debug("SPARQL query: %s", sparql)
 
-    query_base = _api_url("/venues")
-    filter_fragment = f"filter={filter}" if filter else None
-    part_of_params = [p for p in [filter_fragment] if p]
-    part_of_local_identifier = (
-        query_base if not part_of_params else f"{query_base}?{'&'.join(part_of_params)}"
-    )
+    try:
+        turtle_data = query_triplestore(sparql)
+        total_items = count_triplestore(commons.build_count_sparql("sparql_venues_path", filter_clause))
+    except RuntimeError as exc:
+        return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
 
-    meta: Dict[str, Any] = {
-        "local_identifier": _page_url(query_base, filter_fragment, page),
-        "entity_type": "search_result_page",
-        "part_of": {
-            "local_identifier": part_of_local_identifier,
-            "entity_type": "search_result",
-            "total_items": total_items,
-            "first_page": {
-                "local_identifier": _page_url(query_base, filter_fragment, 1),
-                "entity_type": "search_result_page",
-            },
-            "last_page": {
-                "local_identifier": _page_url(query_base, filter_fragment, total_pages),
-                "entity_type": "search_result_page",
+    try:
+        venues = rdf_graph_to_venues(turtle_data) if turtle_data else []
+    except Exception as exc:
+        logging.exception("Failed to convert triplestore response to JSON-LD")
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Failed to convert triplestore response to JSON-LD", "error": str(exc)},
+        )
+
+    base_url = str(request.base_url).rstrip("/")
+    search_url = f"{base_url}{API_PREFIX}/venues"
+    response = {
+        "@context": commons.build_context(base_url),
+        "meta": {
+            "local_identifier": commons.build_page_url(page, page_size, filter, search_url),
+            "entity_type": "search_result_page",
+            "part_of": {
+                "local_identifier": commons.build_page_url(None, page_size, filter, search_url),
+                "entity_type": "search_result",
+                "total_items": total_items,
             },
         },
-        "api_items": [
-            {
-                "local_identifier": venue["local_identifier"],
-                "urls": [
-                    {
-                        "entity_type": "link",
-                        "rel": "self",
-                        "href": _api_url(f"/venues/{venue['local_identifier']}"),
-                        "media_type": "application/json",
-                    }
-                ],
-            }
-            for venue in page_items
-        ],
+        "@graph": venues,
     }
 
-    if page > 1:
-        meta["prev_page"] = {
-            "local_identifier": _page_url(query_base, filter_fragment, page - 1),
+    if offset + page_size < total_items:
+        response["meta"]["next_page"] = {
+            "local_identifier": commons.build_page_url(page + 1, page_size, filter, search_url),
             "entity_type": "search_result_page",
         }
 
-    if end < total_items:
-        meta["next_page"] = {
-            "local_identifier": _page_url(query_base, filter_fragment, page + 1),
-            "entity_type": "search_result_page",
-        }
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "@context": _build_context(),
-            "meta": meta,
-            "@graph": page_items,
-        },
-    )
+    return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/venues/{local_identifier}", tags=["Venue"])
-async def get_venue(
+@router.get("/venues/{local_identifier:path}", tags=["Venue"])
+def get_venue(
+    request: Request,
     local_identifier: str = Path(..., description="The local identifier of the venue"),
 ) -> JSONResponse:
     """Retrieve a single venue by local identifier.
@@ -226,30 +231,33 @@ async def get_venue(
     **Responses**
     - `200` — venue found, returns JSON-LD
     - `404` — no venue with the given identifier
+    - `502` — triplestore unreachable or returned unexpected data
     """
-    logging.info(f"Getting venue - local_identifier={local_identifier}")
+    logging.debug("Get venue endpoint called for local_identifier=%s", local_identifier)
 
-    venue_data = next(
-        (venue for venue in VENUES_DATA if venue["local_identifier"] == local_identifier),
-        None,
-    )
+    filter_clause = f"FILTER(STR(?s) = {json.dumps(commons.add_local_id_prefix(local_identifier))}) ."
+    sparql = commons.build_venue_sparql(filter_clause)
+    logging.debug("SPARQL query: %s", sparql)
 
-    if not venue_data:
-        logging.warning(f"Venue not found - local_identifier={local_identifier}")
+    try:
+        turtle_data = query_triplestore(sparql)
+    except RuntimeError as exc:
+        return JSONResponse(status_code=502, content={"detail": "Failed to query triplestore", "error": str(exc)})
+
+    try:
+        venue = rdf_graph_to_venue(turtle_data, commons.strip_local_id_prefix(local_identifier)) if turtle_data else None
+    except Exception as exc:
+        logging.exception("Failed to convert triplestore response to JSON-LD")
         return JSONResponse(
-            status_code=404,
-            content={"message": f"Venue '{local_identifier}' not found"},
+            status_code=502,
+            content={"detail": "Failed to convert triplestore response to JSON-LD", "error": str(exc)},
         )
 
-    return JSONResponse(
-        status_code=200,
-        content={
-            "@context": _build_context(),
-            "meta": {
-                "local_identifier": _api_url(f"/venues/{local_identifier}"),
-                "entity_type": "single_entity",
-            },
-            "@graph": [venue_data],
-        },
-    )
+    if venue is None:
+        return JSONResponse(status_code=404, content={"detail": "Venue not found"})
 
+    base_url = str(request.base_url).rstrip("/")
+    return JSONResponse(
+        content={"@context": _build_context(base_url), "@graph": [venue]},
+        media_type="application/ld+json",
+    )

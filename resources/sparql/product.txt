@@ -1,20 +1,24 @@
 PREFIX datacite: <http://purl.org/spar/datacite/>
 PREFIX dc:       <http://purl.org/dc/terms/>
 PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX skos:     <http://www.w3.org/2004/02/skos/core#>
+PREFIX bido:     <http://purl.org/spar/bido/>
 PREFIX fabio:    <http://purl.org/spar/fabio/>
-PREFIX skg: <https://w3id.org/skg-if/ontology/>
-PREFIX pro: <http://purl.org/spar/pro/>
-PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-PREFIX frbr: <http://purl.org/vocab/frbr/core#>
-PREFIX dcat: <http://www.w3.org/ns/dcat#>
+PREFIX skg:      <https://w3id.org/skg-if/ontology/>
+PREFIX pro:      <http://purl.org/spar/pro/>
+PREFIX frbr:     <http://purl.org/vocab/frbr/core#>
+PREFIX pso:      <http://purl.org/spar/pso/>
+PREFIX dcat:     <http://www.w3.org/ns/dcat#>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX rdfs:     <http://www.w3.org/2000/01/rdf-schema#>
 
 CONSTRUCT {
-  ?s a fabio:Work , skg:Product ;
+  ?s a fabio:Work , skg:Product , ?ptype ;
      datacite:hasIdentifier ?id ;
      dc:abstract ?a ;
      dc:title ?t ;
-     pro:isRelatedToRoleInTime ?contribution ;
-     frbr:realization ?manifestation .
+     dc:format ?format ;
+     pro:isRelatedToRoleInTime ?contribution .
   ?id datacite:usesIdentifierScheme ?scheme ;
       silvio:hasLiteralValue ?pid .
   ?contribution pro:isHeldBy ?person .
@@ -24,19 +28,33 @@ CONSTRUCT {
           datacite:hasIdentifier ?personId .
   ?personId datacite:usesIdentifierScheme ?personScheme ;
             silvio:hasLiteralValue ?personIdValue .
-  ?manifestation dcat:accessService ?datasource .
-  ?datasource foaf:name ?datasourceName ;
-              datacite:hasIdentifier ?datasourceId .
-  ?datasourceId datacite:usesIdentifierScheme ?datasourceScheme ;
-                silvio:hasLiteralValue ?datasourceIdValue .
+  ?s bido:holdsBibliometricDataInTime ?bd .
+  ?bd a bido:BibliometricDataInTime ;
+      bido:withBibliometricData ?topic .
+  ?topic a fabio:SubjectTerm ;
+         skos:prefLabel ?tl ;
+         datacite:hasIdentifier ?tid .
+  ?tid datacite:usesIdentifierScheme ?tscheme ;
+       silvio:hasLiteralValue ?tpid .
+  ?s frbr:realization ?e .
+  ?e a fabio:Expression ;
+     frbr:embodiment ?m .
+  ?m dc:license ?lic ;
+     pso:holdsStatusInTime ?sit ;
+     dcat:accessService ?ds .
+  ?sit pso:withStatus ?status ;
+       rdfs:comment ?sdesc .
+  ?ds foaf:name ?dsname ;
+      datacite:hasIdentifier ?dsid .
+  ?dsid datacite:usesIdentifierScheme ?dsscheme ;
+        silvio:hasLiteralValue ?dspid .
 }
 WHERE {
     ?s a fabio:Work .
-
-    ?s dc:title ?t .
-    FILTER(?t = "Robin1_Lem")
-
+    OPTIONAL { ?s a ?ptype . }
     OPTIONAL { ?s dc:abstract ?a . }
+    OPTIONAL { ?s dc:title ?t . }
+    OPTIONAL { ?s dc:format ?format . }
     OPTIONAL {
         ?s datacite:hasIdentifier ?id .
         OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
@@ -55,13 +73,36 @@ WHERE {
         }
     }
     OPTIONAL {
-        ?s frbr:realization ?manifestation .
-        ?manifestation dcat:accessService ?datasource .
-        OPTIONAL { ?datasource foaf:name ?datasourceName . }
+        ?s bido:holdsBibliometricDataInTime ?bd .
+        ?bd bido:withBibliometricData ?topic .
+        ?topic a fabio:SubjectTerm .
+        OPTIONAL { ?topic skos:prefLabel ?tl . }
         OPTIONAL {
-            ?datasource datacite:hasIdentifier ?datasourceId .
-            OPTIONAL { ?datasourceId datacite:usesIdentifierScheme ?datasourceScheme . }
-            OPTIONAL { ?datasourceId silvio:hasLiteralValue ?datasourceIdValue . }
+            ?topic datacite:hasIdentifier ?tid .
+            OPTIONAL { ?tid datacite:usesIdentifierScheme ?tscheme . }
+            OPTIONAL { ?tid silvio:hasLiteralValue ?tpid . }
+        }
+    }
+    OPTIONAL {
+        ?s frbr:realization ?e .
+        ?e a fabio:Expression .
+        OPTIONAL {
+            ?e frbr:embodiment ?m .
+            OPTIONAL { ?m dc:license ?lic . FILTER(isIRI(?lic)) }
+            OPTIONAL {
+                ?m pso:holdsStatusInTime ?sit .
+                ?sit pso:withStatus ?status .
+                OPTIONAL { ?sit rdfs:comment ?sdesc . }
+            }
+            OPTIONAL {
+                ?m dcat:accessService ?ds .
+                OPTIONAL { ?ds foaf:name ?dsname . }
+                OPTIONAL {
+                    ?ds datacite:hasIdentifier ?dsid .
+                    OPTIONAL { ?dsid datacite:usesIdentifierScheme ?dsscheme . }
+                    OPTIONAL { ?dsid silvio:hasLiteralValue ?dspid . }
+                }
+            }
         }
     }
 }

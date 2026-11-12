@@ -16,6 +16,7 @@ from src.ost_clairin_skg.api.v1.products import router as products_router
 from src.ost_clairin_skg.api.v1.topics import router as topics_router
 from src.ost_clairin_skg.api.v1.docs import router as docs_router
 from src.ost_clairin_skg.api.v1.root import router as root_router
+from src.ost_clairin_skg.api.v1.services import router as services_router
 from src.ost_clairin_skg.api.v1.venues import router as venues_router
 from src.ost_clairin_skg.infra.commons import app_settings, get_project_details, build_date
 
@@ -72,6 +73,7 @@ app.include_router(venues_router, tags=["Venue"], prefix="")
 app.include_router(grants_router, tags=["Grant"], prefix="")
 app.include_router(datasources_router, tags=["Datasource"], prefix="")
 app.include_router(topics_router, tags=["Topic"], prefix="")
+app.include_router(services_router, tags=["Service"], prefix="")
 app.include_router(root_router, prefix="")
 app.include_router(docs_router, tags=["Docs"], prefix="")
 app.include_router(metrics_router, tags=["Metrics"], prefix="")

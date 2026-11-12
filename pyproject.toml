@@ -1,6 +1,6 @@
 [project]
 name = "ost-clarin-skg-if"
-version = "0.2.5-dev"
+version = "0.2.7-dev"
 title = "OSTrails Clarin SKG-IF API Service"
 description = "The project is developing a standard interoperability framework called SKG-IF to ensure that different SKG implementations can exchange information."
 readme = "README.md"
@@ -14,4 +14,9 @@ dependencies = [
     "rdflib>=7.4.0",
     "tomli>=2.3.0",
     "uvicorn>=0.38.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
 ]

@@ -1,0 +1,49 @@
+PREFIX datacite: <http://purl.org/spar/datacite/>
+PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
+PREFIX foaf:     <http://xmlns.com/foaf/0.1/>
+PREFIX frapo:    <http://purl.org/cerif/frapo/>
+PREFIX dcterms:  <http://purl.org/dc/terms/>
+PREFIX ti:       <http://www.ontologydesignpatterns.org/cp/owl/timeinterval.owl#>
+
+CONSTRUCT {
+  ?s a frapo:Grant ;
+     datacite:hasIdentifier ?id ;
+     dcterms:title ?title ;
+     dcterms:abstract ?abstract ;
+     frapo:hasAcronym ?acronym ;
+     frapo:hasGrantNumber ?number ;
+     frapo:hasFundingAgency ?agency ;
+     frapo:hasCallIdentifier ?stream ;
+     frapo:hasCurrencyCode ?currency ;
+     frapo:hasCurrency ?amount ;
+     foaf:homepage ?website ;
+     frapo:supports ?beneficiary ;
+     dcterms:temporal ?duration .
+  ?duration ti:hasIntervalStartDate ?start ;
+            ti:hasIntervalEndDate ?end .
+  ?id datacite:usesIdentifierScheme ?scheme ;
+      silvio:hasLiteralValue ?pid .
+}
+WHERE {
+    ?s a frapo:Grant .
+    OPTIONAL { ?s dcterms:title ?title . }
+    OPTIONAL { ?s dcterms:abstract ?abstract . }
+    OPTIONAL { ?s frapo:hasAcronym ?acronym . }
+    OPTIONAL { ?s frapo:hasGrantNumber ?number . }
+    OPTIONAL { ?s frapo:hasFundingAgency ?agency . }
+    OPTIONAL { ?s frapo:hasCallIdentifier ?stream . }
+    OPTIONAL { ?s frapo:hasCurrencyCode ?currency . }
+    OPTIONAL { ?s frapo:hasCurrency ?amount . }
+    OPTIONAL { ?s foaf:homepage ?website . }
+    OPTIONAL { ?s frapo:supports ?beneficiary . }
+    OPTIONAL {
+        ?s dcterms:temporal ?duration .
+        OPTIONAL { ?duration ti:hasIntervalStartDate ?start . }
+        OPTIONAL { ?duration ti:hasIntervalEndDate ?end . }
+    }
+    OPTIONAL {
+        ?s datacite:hasIdentifier ?id .
+        OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
+        OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
+    }
+}
