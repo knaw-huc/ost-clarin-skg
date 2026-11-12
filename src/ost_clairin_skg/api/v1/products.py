@@ -19,6 +19,84 @@ SKG_IF_CONTEXT_ONTOLOGY = "https://w3id.org/skg-if/context/1.1.0/skg-if.json"
 SKG_IF_CONTEXT_API = "https://w3id.org/skg-if/context/1.0.0/skg-if-api.json"
 
 
+def _rdf_identifiers(graph: rdflib.Graph, entity: rdflib.term.Node) -> List[Dict[str, str]]:
+    """Extract SKG-IF identifier objects from an RDF entity."""
+    datacite = rdflib.Namespace("http://purl.org/spar/datacite/")
+    silvio = rdflib.Namespace("http://www.essepuntato.it/2010/06/literalreification/")
+
+    identifiers: List[Dict[str, str]] = []
+    for identifier_node in graph.objects(entity, datacite.hasIdentifier):
+        values = list(graph.objects(identifier_node, silvio.hasLiteralValue))
+        if not values:
+            continue
+
+        schemes = list(graph.objects(identifier_node, datacite.usesIdentifierScheme))
+        identifier = {"value": str(values[0])}
+        if schemes:
+            scheme_uri = str(schemes[0])
+            scheme = (
+                scheme_uri.rsplit("#", 1)[-1]
+                if "#" in scheme_uri
+                else scheme_uri.rsplit("/", 1)[-1]
+            )
+            identifier["scheme"] = scheme.lower()
+        identifiers.append(identifier)
+
+    return identifiers
+
+
+def _rdf_graph_to_product_relations(
+    graph: rdflib.Graph, product_subject: rdflib.term.Node
+) -> Dict[str, Any]:
+    """Build PersonLite contributions and DataSourceLite manifestation links."""
+    foaf = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
+    pro = rdflib.Namespace("http://purl.org/spar/pro/")
+    frbr = rdflib.Namespace("http://purl.org/vocab/frbr/core#")
+    dcat = rdflib.Namespace("http://www.w3.org/ns/dcat#")
+
+    product_relations: Dict[str, Any] = {}
+    contributions: List[Dict[str, Any]] = []
+    for contribution in graph.objects(product_subject, pro.isRelatedToRoleInTime):
+        for person in graph.objects(contribution, pro.isHeldBy):
+            person_lite: Dict[str, Any] = {
+                "local_identifier": str(person),
+                "entity_type": "person",
+            }
+            identifiers = _rdf_identifiers(graph, person)
+            if identifiers:
+                person_lite["identifiers"] = identifiers
+            for predicate, field in (
+                (foaf.givenName, "given_name"),
+                (foaf.familyName, "family_name"),
+                (foaf.name, "name"),
+            ):
+                values = list(graph.objects(person, predicate))
+                if values:
+                    person_lite[field] = str(values[0])
+            contributions.append({"by": person_lite})
+    if contributions:
+        product_relations["contributions"] = contributions
+
+    manifestations: List[Dict[str, Any]] = []
+    for manifestation in graph.objects(product_subject, frbr.realization):
+        for datasource in graph.objects(manifestation, dcat.accessService):
+            datasource_lite: Dict[str, Any] = {
+                "local_identifier": str(datasource),
+                "entity_type": "datasource",
+            }
+            identifiers = _rdf_identifiers(graph, datasource)
+            if identifiers:
+                datasource_lite["identifiers"] = identifiers
+            names = list(graph.objects(datasource, foaf.name))
+            if names:
+                datasource_lite["name"] = str(names[0])
+            manifestations.append({"biblio": {"hosting_data_source": datasource_lite}})
+    if manifestations:
+        product_relations["manifestations"] = manifestations
+
+    return product_relations
+
+
 # --- helpers: keep RDF->JSON-LD and context selection here ---
 
 
@@ -85,6 +163,7 @@ def _rdf_graph_to_product(turtle_data: str, product_id: str) -> Dict[str, Any]:
     if identifiers:
         product["identifiers"] = identifiers
 
+    product.update(_rdf_graph_to_product_relations(g, product_subject))
     return product
 
 
@@ -208,6 +287,7 @@ def _rdf_graph_to_products(turtle_data: str) -> List[Dict[str, Any]]:
         if identifiers:
             product["identifiers"] = identifiers
 
+        product.update(_rdf_graph_to_product_relations(g, product_subject))
         products.append(product)
 
     return products

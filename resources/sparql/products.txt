@@ -3,14 +3,32 @@ PREFIX dc:       <http://purl.org/dc/terms/>
 PREFIX silvio:   <http://www.essepuntato.it/2010/06/literalreification/>
 PREFIX fabio:    <http://purl.org/spar/fabio/>
 PREFIX skg: <https://w3id.org/skg-if/ontology/>
+PREFIX pro: <http://purl.org/spar/pro/>
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX frbr: <http://purl.org/vocab/frbr/core#>
+PREFIX dcat: <http://www.w3.org/ns/dcat#>
 
 CONSTRUCT {
   ?s a fabio:Work , skg:Product ;
      datacite:hasIdentifier ?id ;
      dc:abstract ?a ;
-     dc:title ?t .
+     dc:title ?t ;
+     pro:isRelatedToRoleInTime ?contribution ;
+     frbr:realization ?manifestation .
   ?id datacite:usesIdentifierScheme ?scheme ;
       silvio:hasLiteralValue ?pid .
+  ?contribution pro:isHeldBy ?person .
+  ?person foaf:givenName ?givenName ;
+          foaf:familyName ?familyName ;
+          foaf:name ?personName ;
+          datacite:hasIdentifier ?personId .
+  ?personId datacite:usesIdentifierScheme ?personScheme ;
+            silvio:hasLiteralValue ?personIdValue .
+  ?manifestation dcat:accessService ?datasource .
+  ?datasource foaf:name ?datasourceName ;
+              datacite:hasIdentifier ?datasourceId .
+  ?datasourceId datacite:usesIdentifierScheme ?datasourceScheme ;
+                silvio:hasLiteralValue ?datasourceIdValue .
 }
 WHERE {
     ?s a fabio:Work .
@@ -21,5 +39,26 @@ WHERE {
         OPTIONAL { ?id datacite:usesIdentifierScheme ?scheme . }
         OPTIONAL { ?id silvio:hasLiteralValue ?pid . }
     }
+    OPTIONAL {
+        ?s pro:isRelatedToRoleInTime ?contribution .
+        ?contribution pro:isHeldBy ?person .
+        OPTIONAL { ?person foaf:givenName ?givenName . }
+        OPTIONAL { ?person foaf:familyName ?familyName . }
+        OPTIONAL { ?person foaf:name ?personName . }
+        OPTIONAL {
+            ?person datacite:hasIdentifier ?personId .
+            OPTIONAL { ?personId datacite:usesIdentifierScheme ?personScheme . }
+            OPTIONAL { ?personId silvio:hasLiteralValue ?personIdValue . }
+        }
+    }
+    OPTIONAL {
+        ?s frbr:realization ?manifestation .
+        ?manifestation dcat:accessService ?datasource .
+        OPTIONAL { ?datasource foaf:name ?datasourceName . }
+        OPTIONAL {
+            ?datasource datacite:hasIdentifier ?datasourceId .
+            OPTIONAL { ?datasourceId datacite:usesIdentifierScheme ?datasourceScheme . }
+            OPTIONAL { ?datasourceId silvio:hasLiteralValue ?datasourceIdValue . }
+        }
+    }
 }
-
