@@ -200,7 +200,7 @@ def get_datasources(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/datasources/{local_identifier:path}", tags=["Datasource"])
+@router.get("/datasources/{local_identifier:nonempty_path}", tags=["Datasource"])
 def get_datasource(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the datasource"),

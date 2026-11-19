@@ -5,6 +5,14 @@ import re
 from dynaconf import Dynaconf
 from typing import Any, List, Optional, Dict
 from urllib.parse import urlencode
+from starlette.convertors import PathConvertor, register_url_convertor
+
+
+class NonEmptyPathConvertor(PathConvertor):
+    regex = ".+"
+
+
+register_url_convertor("nonempty_path", NonEmptyPathConvertor())
 
 build_date = os.environ.get("BUILD_DATE", "unknown")
 

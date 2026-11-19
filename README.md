@@ -23,6 +23,22 @@ The SKG-IF Product Endpoint is a new API endpoint that retrieves product informa
 
 ---
 
+### API documentation
+
+- [`/docs`](/docs) is the interactive Swagger UI for the running application.
+  Its generated OpenAPI document is available at [`/openapi.json`](/openapi.json).
+- [`/docs/openapi.yaml`](/docs/openapi.yaml) and
+  [`/docs/openapi.json`](/docs/openapi.json) serve the bundled
+  `resources/skg-if-openapi.yaml` specification, not the generated application
+  schema. [`/docs/openapi`](/docs/openapi) serves JSON when requested with
+  `Accept: application/json`, and YAML otherwise.
+
+Entity collection URLs with a trailing slash redirect to the corresponding
+URL without the trailing slash. Detail URLs require a nonempty identifier and
+continue to accept identifiers containing slashes.
+
+---
+
 <a name="getting-started"></a>
 ## 🚀 Getting Started (Start Here!)
 

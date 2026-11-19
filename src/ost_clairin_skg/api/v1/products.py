@@ -249,7 +249,7 @@ def _build_skg_if_response(product_data: Dict[str, Any], base_url: str = "https:
         "@graph": [product_data]
     }
 
-@router.get("/products/{id:path}", tags=["Product"])
+@router.get("/products/{id:nonempty_path}", tags=["Product"])
 def get_product(id: str = Path(..., description="Product identifier (local ID or full URI)"), request: Request = None):
     """Retrieve a single product by identifier.
 

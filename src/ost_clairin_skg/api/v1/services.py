@@ -224,7 +224,7 @@ def get_services(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/services/{local_identifier:path}", tags=["Service"])
+@router.get("/services/{local_identifier:nonempty_path}", tags=["Service"])
 def get_service(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the service"),

@@ -172,7 +172,7 @@ def get_topics(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/topics/{local_identifier:path}", tags=["Topic"])
+@router.get("/topics/{local_identifier:nonempty_path}", tags=["Topic"])
 def get_topic(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the topic"),

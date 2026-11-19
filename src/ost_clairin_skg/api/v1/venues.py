@@ -219,7 +219,7 @@ def get_venues(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/venues/{local_identifier:path}", tags=["Venue"])
+@router.get("/venues/{local_identifier:nonempty_path}", tags=["Venue"])
 def get_venue(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the venue"),

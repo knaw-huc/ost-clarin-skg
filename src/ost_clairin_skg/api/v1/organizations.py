@@ -172,7 +172,7 @@ def get_organisations(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/organisations/{local_identifier:path}", tags=["Organisation"])
+@router.get("/organisations/{local_identifier:nonempty_path}", tags=["Organisation"])
 def get_organisation(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the organisation"),

@@ -175,7 +175,7 @@ def get_persons(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/persons/{local_identifier:path}", tags=["Person"])
+@router.get("/persons/{local_identifier:nonempty_path}", tags=["Person"])
 def get_person(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the person"),

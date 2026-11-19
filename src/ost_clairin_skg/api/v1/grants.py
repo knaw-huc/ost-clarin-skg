@@ -230,7 +230,7 @@ def get_grants(
     return JSONResponse(content=response, media_type="application/ld+json")
 
 
-@router.get("/grants/{local_identifier:path}", tags=["Grant"])
+@router.get("/grants/{local_identifier:nonempty_path}", tags=["Grant"])
 def get_grant(
     request: Request,
     local_identifier: str = Path(..., description="The local identifier of the grant"),
